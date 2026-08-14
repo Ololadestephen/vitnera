@@ -1,0 +1,19 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.24"
+optimizer = true
+optimizer_runs = 20_000
+via_ir = true
+
+[rpc_endpoints]
+bot_testnet = "${BOTCHAIN_RPC_URL}"
+bot_mainnet = "https://rpc.botchain.ai"
+
+[fmt]
+line_length = 110
+tab_width = 4
+bracket_spacing = true

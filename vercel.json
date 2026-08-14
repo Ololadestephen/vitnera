@@ -1,0 +1,5 @@
+{
+  "buildCommand": "npm run build -w @vitnera/web",
+  "outputDirectory": "apps/web/dist",
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}

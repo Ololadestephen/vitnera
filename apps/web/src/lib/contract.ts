@@ -1,0 +1,46 @@
+import { parseAbi } from "viem";
+
+export const vitneraAbi = parseAbi([
+  "function roomCount() view returns (uint256)",
+  "function reviewCount() view returns (uint256)",
+  "function requestCount() view returns (uint256)",
+  "function reviewerNonces(address) view returns (uint256)",
+  "function claimableEarnings(address) view returns (uint256)",
+  "function claimableRefunds(address) view returns (uint256)",
+  "function latestRequestId(uint256,uint64,address) view returns (uint256)",
+  "function isRoomReviewReady(uint256) view returns (bool)",
+  "function getRoom(uint256) view returns ((address issuer,bytes32 metadataHash,string metadataUri,bytes32 documentRoot,bytes32 keyCommitment,bytes32 termsHash,bytes32 templateId,uint256 accessPrice,uint256 currentReviewId,uint64 version,uint64 requestTtl,uint64 createdAt,uint64 updatedAt,uint8 status))",
+  "function getReview(uint256) view returns ((bytes32 documentRoot,bytes32 templateId,bytes32 riskFlagsHash,bytes32 reportHash,address reviewer,uint64 roomVersion,uint64 expiry,uint64 recordedAt,uint32 policyVersion,uint8 status))",
+  "function getAccessRequest(uint256) view returns ((uint256 roomId,uint64 roomVersion,address investor,bytes32 encryptionPublicKey,uint256 amount,uint64 requestedAt,uint64 expiresAt,uint8 status,bytes32 envelopeHash,string envelopeUri))",
+  "function createDataRoom(bytes32 metadataHash,string metadataUri,bytes32 documentRoot,bytes32 keyCommitment,bytes32 termsHash,bytes32 templateId,uint256 accessPrice,uint64 requestTtl) returns (uint256)",
+  "function updateDocumentRoot(uint256 roomId,bytes32 newDocumentRoot,bytes32 newMetadataHash,string newMetadataUri,bytes32 newKeyCommitment)",
+  "function updateRoomTerms(uint256 roomId,bytes32 newTermsHash,uint256 newAccessPrice,uint64 newRequestTtl)",
+  "function recordAIReview((uint256 roomId,uint64 roomVersion,bytes32 documentRoot,bytes32 templateId,uint8 reviewStatus,bytes32 riskFlagsHash,bytes32 reportHash,uint32 policyVersion,uint256 nonce,uint64 expiry) attestation,bytes signature) returns (uint256)",
+  "function activateDataRoom(uint256 roomId)",
+  "function pauseDataRoom(uint256 roomId)",
+  "function archiveDataRoom(uint256 roomId)",
+  "function requestAccess(uint256 roomId,bytes32 encryptionPublicKey) payable returns (uint256)",
+  "function approveAccess(uint256 requestId,bytes32 envelopeHash,string envelopeUri)",
+  "function rejectAccess(uint256 requestId)",
+  "function refundExpiredRequest(uint256 requestId)",
+  "function revokeAccess(uint256 requestId)",
+  "function withdrawEarnings()",
+  "function withdrawRefund()",
+  "function recordVerifierAttestation((uint256 roomId,uint64 roomVersion,bytes32 documentRoot,bytes32 findingsHash,uint256 nonce,uint64 expiry) attestation,bytes signature) returns (uint256)",
+  "function getVerifierAttestation(uint256) view returns ((address verifier,uint256 roomId,uint64 roomVersion,bytes32 documentRoot,bytes32 findingsHash,uint64 expiry,uint64 recordedAt))",
+  "event DataRoomCreated(uint256 indexed roomId,address indexed issuer,bytes32 indexed templateId,bytes32 documentRoot,bytes32 metadataHash,string metadataUri,uint256 accessPrice,uint64 version)",
+  "event AIReviewRecorded(uint256 indexed reviewId,uint256 indexed roomId,address indexed reviewer,uint64 roomVersion,uint8 status,bytes32 reportHash,uint64 expiry)",
+  "event VerifierAttestationRecorded(uint256 indexed attestationId,uint256 indexed roomId,address indexed verifier,uint64 roomVersion,bytes32 findingsHash,uint64 expiry)",
+  "event DataRoomActivated(uint256 indexed roomId,uint64 indexed version,uint256 indexed reviewId)",
+  "event AccessRequested(uint256 indexed requestId,uint256 indexed roomId,address indexed investor,uint64 roomVersion,uint256 amount,bytes32 encryptionPublicKey,uint64 expiresAt)",
+  "event AccessApproved(uint256 indexed requestId,uint256 indexed roomId,address indexed investor,bytes32 envelopeHash,string envelopeUri)",
+  "event AccessRejected(uint256 indexed requestId,uint256 indexed roomId,address indexed investor)",
+  "event RequestRefunded(uint256 indexed requestId,uint256 indexed roomId,address indexed investor)",
+  "event AccessRevoked(uint256 indexed requestId,uint256 indexed roomId,address indexed investor)",
+  "event EarningsWithdrawn(address indexed issuer,uint256 amount)",
+  "event RefundWithdrawn(address indexed investor,uint256 amount)",
+]);
+
+export const roomStatuses = ["Review required", "Active", "Paused", "Archived"] as const;
+export const reviewStatuses = ["None", "AI Reviewed", "Needs review", "Incomplete"] as const;
+export const requestStatuses = ["None", "Pending", "Approved", "Rejected", "Refunded", "Revoked"] as const;

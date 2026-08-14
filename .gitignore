@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.keystore
+*.mnemonic
+
+# JavaScript and TypeScript output
+dist/
+coverage/
+*.tsbuildinfo
+.vite/
+
+# Foundry output and deployment state
+contracts/lib/
+contracts/cache/
+contracts/out/
+contracts/broadcast/
+
+# Tooling and local state
+.vercel/
+.idea/
+.vscode/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Operating system files
+.DS_Store
+Thumbs.db

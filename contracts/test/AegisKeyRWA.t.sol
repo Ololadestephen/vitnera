@@ -1,0 +1,274 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.24;
+
+import { Test } from "forge-std/Test.sol";
+import { AegisKeyRWA } from "../src/AegisKeyRWA.sol";
+
+contract AegisKeyRWATest is Test {
+    AegisKeyRWA internal rwa;
+
+    uint256 internal reviewerKey = 0xA11CE;
+    address internal reviewer;
+    uint256 internal verifierKey = 0xB0B;
+    address internal verifier;
+    address internal issuer = makeAddr("issuer");
+    address internal investor = makeAddr("investor");
+
+    bytes32 internal constant SOLAR_TEMPLATE = keccak256("solar-installation-v1");
+    bytes32 internal constant ROOT_V1 = keccak256("documents-v1");
+    bytes32 internal constant ROOT_V2 = keccak256("documents-v2");
+    bytes32 internal constant KEY_V1 = keccak256("room-key-v1");
+    bytes32 internal constant KEY_V2 = keccak256("room-key-v2");
+    uint256 internal constant PRICE = 0.05 ether;
+
+    function setUp() public {
+        reviewer = vm.addr(reviewerKey);
+        verifier = vm.addr(verifierKey);
+        rwa = new AegisKeyRWA(address(this));
+        rwa.setAuthorizedReviewer(reviewer, true);
+        rwa.setAuthorizedVerifier(verifier, true);
+        rwa.setSupportedTemplate(SOLAR_TEMPLATE, true);
+        rwa.setSupportedPolicyVersion(1, true);
+        vm.deal(investor, 10 ether);
+        vm.deal(issuer, 1 ether);
+    }
+
+    function testCreateStartsReviewRequiredAndCannotActivate() public {
+        uint256 roomId = _createRoom();
+        AegisKeyRWA.DataRoom memory room = rwa.getRoom(roomId);
+        assertEq(uint8(room.status), uint8(AegisKeyRWA.RoomStatus.ReviewRequired));
+        assertEq(room.version, 1);
+
+        vm.prank(issuer);
+        vm.expectRevert(AegisKeyRWA.InvalidReview.selector);
+        rwa.activateDataRoom(roomId);
+    }
+
+    function testAIReviewGatesActivation() public {
+        uint256 roomId = _createRoom();
+        uint256 reviewId = _recordReview(roomId, ROOT_V1, 1, AegisKeyRWA.ReviewStatus.ReviewReady);
+
+        vm.prank(issuer);
+        rwa.activateDataRoom(roomId);
+
+        AegisKeyRWA.DataRoom memory room = rwa.getRoom(roomId);
+        assertEq(room.currentReviewId, reviewId);
+        assertEq(uint8(room.status), uint8(AegisKeyRWA.RoomStatus.Active));
+        assertTrue(rwa.isRoomReviewReady(roomId));
+    }
+
+    function testNeedsReviewCannotActivate() public {
+        uint256 roomId = _createRoom();
+        _recordReview(roomId, ROOT_V1, 1, AegisKeyRWA.ReviewStatus.NeedsReview);
+
+        vm.prank(issuer);
+        vm.expectRevert(AegisKeyRWA.InvalidReview.selector);
+        rwa.activateDataRoom(roomId);
+    }
+
+    function testVerifierAttestationIsRootBoundAndReplayProtected() public {
+        uint256 roomId = _createRoom();
+        AegisKeyRWA.VerifierAttestation memory attestation = AegisKeyRWA.VerifierAttestation({
+            roomId: roomId,
+            roomVersion: 1,
+            documentRoot: ROOT_V1,
+            findingsHash: keccak256("independent-findings"),
+            nonce: 0,
+            expiry: uint64(block.timestamp + 7 days)
+        });
+        bytes32 digest = rwa.hashVerifierAttestation(attestation);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(verifierKey, digest);
+        bytes memory signature = abi.encodePacked(r, s, v);
+        uint256 attestationId = rwa.recordVerifierAttestation(attestation, signature);
+        assertEq(rwa.getVerifierAttestation(attestationId).verifier, verifier);
+
+        vm.expectRevert(AegisKeyRWA.InvalidAttestation.selector);
+        rwa.recordVerifierAttestation(attestation, signature);
+    }
+
+    function testRejectsWrongRootAndReplayNonce() public {
+        uint256 roomId = _createRoom();
+        AegisKeyRWA.AIReviewAttestation memory wrong =
+            _attestation(roomId, ROOT_V2, 1, AegisKeyRWA.ReviewStatus.ReviewReady, 0);
+        bytes memory wrongSignature = _sign(wrong);
+        vm.expectRevert(AegisKeyRWA.InvalidAttestation.selector);
+        rwa.recordAIReview(wrong, wrongSignature);
+
+        AegisKeyRWA.AIReviewAttestation memory valid =
+            _attestation(roomId, ROOT_V1, 1, AegisKeyRWA.ReviewStatus.ReviewReady, 0);
+        bytes memory signature = _sign(valid);
+        rwa.recordAIReview(valid, signature);
+
+        vm.expectRevert(AegisKeyRWA.InvalidAttestation.selector);
+        rwa.recordAIReview(valid, signature);
+    }
+
+    function testExactPaymentAndApprovalCreditsIssuer() public {
+        uint256 roomId = _createActiveRoom();
+
+        vm.prank(investor);
+        vm.expectRevert(AegisKeyRWA.InvalidPayment.selector);
+        rwa.requestAccess{ value: 1 wei }(roomId, keccak256("investor-public-key"));
+
+        uint256 requestId = _requestAccess(roomId);
+        assertEq(address(rwa).balance, PRICE);
+        assertEq(rwa.totalPendingEscrow(), PRICE);
+
+        vm.prank(issuer);
+        rwa.approveAccess(requestId, keccak256("envelope"), "ipfs://envelope-cid");
+
+        assertEq(rwa.totalPendingEscrow(), 0);
+        assertEq(rwa.claimableEarnings(issuer), PRICE);
+        assertEq(rwa.accountedBalance(), address(rwa).balance);
+
+        uint256 before = issuer.balance;
+        vm.prank(issuer);
+        rwa.withdrawEarnings();
+        assertEq(issuer.balance, before + PRICE);
+        assertEq(address(rwa).balance, 0);
+    }
+
+    function testRejectCreditsPullRefund() public {
+        uint256 roomId = _createActiveRoom();
+        uint256 requestId = _requestAccess(roomId);
+
+        vm.prank(issuer);
+        rwa.rejectAccess(requestId);
+        assertEq(rwa.claimableRefunds(investor), PRICE);
+        assertEq(rwa.totalPendingEscrow(), 0);
+
+        uint256 before = investor.balance;
+        vm.prank(investor);
+        rwa.withdrawRefund();
+        assertEq(investor.balance, before + PRICE);
+    }
+
+    function testExpiredRequestCanBeRefunded() public {
+        uint256 roomId = _createActiveRoom();
+        uint256 requestId = _requestAccess(roomId);
+        AegisKeyRWA.AccessRequest memory request = rwa.getAccessRequest(requestId);
+
+        vm.warp(request.expiresAt);
+        vm.prank(investor);
+        rwa.refundExpiredRequest(requestId);
+        assertEq(rwa.claimableRefunds(investor), PRICE);
+    }
+
+    function testDocumentUpdateRotatesKeyAndInvalidatesReview() public {
+        uint256 roomId = _createActiveRoom();
+        uint256 requestId = _requestAccess(roomId);
+
+        vm.prank(issuer);
+        vm.expectRevert(AegisKeyRWA.InvalidConfiguration.selector);
+        rwa.updateDocumentRoot(roomId, ROOT_V2, keccak256("metadata-v2"), "ipfs://metadata-v2", KEY_V1);
+
+        vm.prank(issuer);
+        rwa.updateDocumentRoot(roomId, ROOT_V2, keccak256("metadata-v2"), "ipfs://metadata-v2", KEY_V2);
+
+        AegisKeyRWA.DataRoom memory room = rwa.getRoom(roomId);
+        assertEq(room.version, 2);
+        assertEq(room.currentReviewId, 0);
+        assertEq(uint8(room.status), uint8(AegisKeyRWA.RoomStatus.ReviewRequired));
+        assertFalse(rwa.isRoomReviewReady(roomId));
+
+        vm.prank(issuer);
+        vm.expectRevert(AegisKeyRWA.InvalidStatus.selector);
+        rwa.approveAccess(requestId, keccak256("envelope"), "ipfs://stale-envelope");
+
+        vm.prank(investor);
+        rwa.refundExpiredRequest(requestId);
+        assertEq(rwa.claimableRefunds(investor), PRICE);
+    }
+
+    function testApprovedAccessCanBeMarkedRevoked() public {
+        uint256 roomId = _createActiveRoom();
+        uint256 requestId = _requestAccess(roomId);
+        vm.prank(issuer);
+        rwa.approveAccess(requestId, keccak256("envelope"), "ipfs://envelope-cid");
+
+        vm.prank(issuer);
+        rwa.revokeAccess(requestId);
+        assertEq(uint8(rwa.getAccessRequest(requestId).status), uint8(AegisKeyRWA.RequestStatus.Revoked));
+    }
+
+    function testCannotOpenDuplicatePendingOrApprovedRequest() public {
+        uint256 roomId = _createActiveRoom();
+        _requestAccess(roomId);
+
+        vm.prank(investor);
+        vm.expectRevert(AegisKeyRWA.ExistingRequest.selector);
+        rwa.requestAccess{ value: PRICE }(roomId, keccak256("second-public-key"));
+    }
+
+    function testFuzzExactPaymentIsEnforced(uint96 wrongAmount) public {
+        uint256 roomId = _createActiveRoom();
+        vm.assume(wrongAmount != PRICE);
+        vm.deal(investor, uint256(wrongAmount) + 1 ether);
+        vm.prank(investor);
+        vm.expectRevert(AegisKeyRWA.InvalidPayment.selector);
+        rwa.requestAccess{ value: wrongAmount }(roomId, keccak256("investor-public-key"));
+    }
+
+    function _createRoom() internal returns (uint256) {
+        vm.prank(issuer);
+        return rwa.createDataRoom(
+            keccak256("metadata-v1"),
+            "ipfs://metadata-v1",
+            ROOT_V1,
+            KEY_V1,
+            keccak256("terms-v1"),
+            SOLAR_TEMPLATE,
+            PRICE,
+            2 days
+        );
+    }
+
+    function _createActiveRoom() internal returns (uint256 roomId) {
+        roomId = _createRoom();
+        _recordReview(roomId, ROOT_V1, 1, AegisKeyRWA.ReviewStatus.ReviewReady);
+        vm.prank(issuer);
+        rwa.activateDataRoom(roomId);
+    }
+
+    function _requestAccess(uint256 roomId) internal returns (uint256) {
+        vm.prank(investor);
+        return rwa.requestAccess{ value: PRICE }(roomId, keccak256("investor-public-key"));
+    }
+
+    function _recordReview(uint256 roomId, bytes32 root, uint64 version, AegisKeyRWA.ReviewStatus status)
+        internal
+        returns (uint256)
+    {
+        uint256 nonce = rwa.reviewerNonces(reviewer);
+        AegisKeyRWA.AIReviewAttestation memory attestation =
+            _attestation(roomId, root, version, status, nonce);
+        return rwa.recordAIReview(attestation, _sign(attestation));
+    }
+
+    function _attestation(
+        uint256 roomId,
+        bytes32 root,
+        uint64 version,
+        AegisKeyRWA.ReviewStatus status,
+        uint256 nonce
+    ) internal view returns (AegisKeyRWA.AIReviewAttestation memory) {
+        return AegisKeyRWA.AIReviewAttestation({
+            roomId: roomId,
+            roomVersion: version,
+            documentRoot: root,
+            templateId: SOLAR_TEMPLATE,
+            reviewStatus: status,
+            riskFlagsHash: keccak256("risk-flags"),
+            reportHash: keccak256("report"),
+            policyVersion: 1,
+            nonce: nonce,
+            expiry: uint64(block.timestamp + 7 days)
+        });
+    }
+
+    function _sign(AegisKeyRWA.AIReviewAttestation memory attestation) internal view returns (bytes memory) {
+        bytes32 digest = rwa.hashReviewAttestation(attestation);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(reviewerKey, digest);
+        return abi.encodePacked(r, s, v);
+    }
+}

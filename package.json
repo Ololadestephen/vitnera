@@ -1,0 +1,20 @@
+{
+  "name": "@vitnera/platform",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "services/*"
+  ],
+  "scripts": {
+    "setup:contracts": "sh contracts/install-deps.sh",
+    "build": "npm run build -w @vitnera/core && npm run build -w @vitnera/reviewer && npm run build -w @vitnera/web",
+    "test": "npm run test:contracts && npm run test -w @vitnera/core && npm run test -w @vitnera/reviewer",
+    "test:contracts": "npm run setup:contracts && cd contracts && forge test --offline -vv",
+    "lint:contracts": "cd contracts && forge fmt --check",
+    "dev": "npm run dev -w @vitnera/web",
+    "dev:reviewer": "npm run dev -w @vitnera/reviewer"
+  }
+}

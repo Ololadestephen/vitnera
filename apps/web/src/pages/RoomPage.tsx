@@ -1,0 +1,100 @@
+import { bytesToHex, exportRecoveryBundle, generateInvestorKeyPair } from "@vitnera/core";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Clock, Download, FileLock2, ShieldCheck } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
+import { formatEther } from "viem";
+import { useAccount } from "wagmi";
+import { Busy, Notice, Status } from "../components/Status";
+import { useRooms } from "../hooks/useRooms";
+import { useTransaction } from "../hooks/useTransaction";
+import { vitneraAbi, requestStatuses, reviewStatuses, roomStatuses } from "../lib/contract";
+import { explorerTx, requireContract } from "../lib/config";
+import { downloadJson, saveInvestorKey } from "../lib/session";
+
+export function RoomPage() {
+  const { roomId = "0" } = useParams();
+  const id = BigInt(roomId);
+  const { address } = useAccount();
+  const rooms = useRooms();
+  const tx = useTransaction();
+  const queryClient = useQueryClient();
+  const [passphrase, setPassphrase] = useState("");
+  const [message, setMessage] = useState<string>();
+  const room = useMemo(() => rooms.data?.find((item) => item.id === id), [rooms.data, id]);
+
+  const review = useQuery({
+    queryKey: ["review", room?.currentReviewId.toString()],
+    enabled: Boolean(tx.client && room && room.currentReviewId > 0n),
+    queryFn: () => tx.client!.readContract({ address: requireContract(), abi: vitneraAbi, functionName: "getReview", args: [room!.currentReviewId] }),
+  });
+
+  const request = useQuery({
+    queryKey: ["latest-request", roomId, room?.version.toString(), address],
+    enabled: Boolean(tx.client && room && address),
+    queryFn: async () => {
+      const requestId = await tx.client!.readContract({ address: requireContract(), abi: vitneraAbi, functionName: "latestRequestId", args: [id, room!.version, address!] });
+      if (requestId === 0n) return null;
+      const result = await tx.client!.readContract({ address: requireContract(), abi: vitneraAbi, functionName: "getAccessRequest", args: [requestId] });
+      return { id: requestId, ...result, status: Number(result.status) };
+    },
+  });
+
+  async function requestAccess() {
+    if (!room || !address || !tx.wallet) throw new Error("Connect a BOT Chain wallet first");
+    if (passphrase.length < 12) throw new Error("Set a recovery passphrase with at least 12 characters");
+    setMessage(undefined);
+    const pair = generateInvestorKeyPair();
+    const recovery = await exportRecoveryBundle({ keyPair: pair, wallet: address, passphrase });
+    downloadJson(recovery, `vitnera-room-${roomId}-investor-recovery.json`);
+    saveInvestorKey(address, roomId, Number(room.version), pair);
+    await tx.send(() => tx.wallet!.writeContract({
+      address: requireContract(), abi: vitneraAbi, functionName: "requestAccess",
+      args: [id, bytesToHex(pair.publicKey)], value: room.accessPrice,
+    }));
+    await queryClient.invalidateQueries({ queryKey: ["latest-request", roomId] });
+    setMessage("Access request escrowed. The issuer can now approve your wallet-bound key.");
+  }
+
+  if (rooms.isLoading || !room) return <div className="page empty-state"><Busy label="Loading data room" /></div>;
+  const currentRequest = request.data;
+  const canRequest = room.status === 1 && (!currentRequest || ![1, 2].includes(currentRequest.status));
+  const reviewValue = review.data;
+
+  return (
+    <div className="page page-enter">
+      <div className="room-hero">
+        <div><p className="eyebrow">Room {room.id.toString()} · version {room.version.toString()}</p><h1>{room.metadata?.title ?? `Data room ${room.id}`}</h1><p>{room.metadata?.summary}</p></div>
+        <div className="price-block"><span>Escrow deposit</span><strong>{formatEther(room.accessPrice)} BOT</strong><Status tone={room.status === 1 ? "good" : "warn"}>{roomStatuses[room.status]}</Status></div>
+      </div>
+      <div className="detail-grid">
+        <section className="panel document-index">
+          <div className="section-title"><FileLock2 /><div><p className="eyebrow">Encrypted evidence</p><h2>Document index</h2></div></div>
+          {room.metadata?.manifest.documents.map((document) => (
+            <div className="document-row" key={document.id}><div><strong>{document.displayName}</strong><span>{document.type.replaceAll("_", " ")}</span></div><Status>{document.required ? "Required" : "Supporting"}</Status></div>
+          ))}
+          <p className="privacy-note"><ShieldCheck size={17} /> Filenames and public labels are visible. File contents remain ciphertext on IPFS.</p>
+        </section>
+        <aside className="panel access-panel">
+          <p className="eyebrow">Wallet-bound access</p>
+          {currentRequest ? (
+            <div className="request-state"><Status tone={currentRequest.status === 2 ? "good" : currentRequest.status === 1 ? "warn" : "neutral"}>{requestStatuses[currentRequest.status]}</Status><h2>{currentRequest.status === 2 ? "Access approved" : "Request recorded"}</h2><p>{currentRequest.status === 1 ? "Your BOT remains in escrow until approval, rejection, or expiry." : "Open My Access to retrieve the encrypted key envelope."}</p></div>
+          ) : <><h2>Request protected access</h2><p>Your deposit is held by the contract. The issuer earns it only after approving a key envelope for this wallet.</p></>}
+          {canRequest && <>
+            <label className="field"><span>Recovery passphrase</span><input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="12+ characters" /><small>An encrypted recovery file downloads before payment.</small></label>
+            <button className="button primary wide" disabled={tx.pending || !address} onClick={() => void requestAccess().catch(() => undefined)}>{tx.pending ? <Busy label="Submitting escrow" /> : `Request access · ${formatEther(room.accessPrice)} BOT`}</button>
+          </>}
+          {currentRequest?.status === 2 && <a className="button primary wide" href="/access"><Download size={17} /> Open My Access</a>}
+          {!address && <div className="notice">Connect a wallet to request access.</div>}
+          {room.status !== 1 && <div className="notice">This room is not accepting requests until its current AI review is active.</div>}
+          <Notice error={tx.error} message={message} />
+          {tx.hash && <a className="text-link" href={explorerTx(tx.hash)} target="_blank" rel="noreferrer">View latest transaction</a>}
+        </aside>
+      </div>
+      <section className="panel review-summary">
+        <div><p className="eyebrow">AI review evidence</p><h2>{reviewValue ? reviewStatuses[Number(reviewValue.status)] : "Review not recorded"}</h2></div>
+        {reviewValue && <div className="review-facts"><span><Clock /> Expires {new Date(Number(reviewValue.expiry) * 1000).toLocaleDateString()}</span><span><ShieldCheck /> Reviewer {reviewValue.reviewer.slice(0, 8)}...{reviewValue.reviewer.slice(-6)}</span><span>Report {reviewValue.reportHash.slice(0, 12)}...</span></div>}
+      </section>
+    </div>
+  );
+}
