@@ -2,19 +2,19 @@
 pragma solidity 0.8.24;
 
 import { Script } from "forge-std/Script.sol";
-import { AegisKeyRWA } from "../src/AegisKeyRWA.sol";
+import { VitneraRWA } from "../src/VitneraRWA.sol";
 
-contract DeployAegisKeyRWA is Script {
+contract DeployVitneraRWA is Script {
     bytes32 internal constant SOLAR_TEMPLATE = keccak256("solar-installation-v1");
 
-    function run() external returns (AegisKeyRWA deployed) {
+    function run() external returns (VitneraRWA deployed) {
         uint256 deployerKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
         address deployer = vm.addr(deployerKey);
         address reviewer = vm.envAddress("REVIEWER_ADDRESS");
         address verifier = vm.envOr("VERIFIER_ADDRESS", address(0));
 
         vm.startBroadcast(deployerKey);
-        deployed = new AegisKeyRWA(deployer);
+        deployed = new VitneraRWA(deployer);
         deployed.setSupportedTemplate(SOLAR_TEMPLATE, true);
         deployed.setSupportedPolicyVersion(1, true);
         deployed.setAuthorizedReviewer(reviewer, true);

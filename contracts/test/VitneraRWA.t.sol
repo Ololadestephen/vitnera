@@ -2,10 +2,10 @@
 pragma solidity 0.8.24;
 
 import { Test } from "forge-std/Test.sol";
-import { AegisKeyRWA } from "../src/AegisKeyRWA.sol";
+import { VitneraRWA } from "../src/VitneraRWA.sol";
 
-contract AegisKeyRWATest is Test {
-    AegisKeyRWA internal rwa;
+contract VitneraRWATest is Test {
+    VitneraRWA internal rwa;
 
     uint256 internal reviewerKey = 0xA11CE;
     address internal reviewer;
@@ -24,7 +24,7 @@ contract AegisKeyRWATest is Test {
     function setUp() public {
         reviewer = vm.addr(reviewerKey);
         verifier = vm.addr(verifierKey);
-        rwa = new AegisKeyRWA(address(this));
+        rwa = new VitneraRWA(address(this));
         rwa.setAuthorizedReviewer(reviewer, true);
         rwa.setAuthorizedVerifier(verifier, true);
         rwa.setSupportedTemplate(SOLAR_TEMPLATE, true);
@@ -35,40 +35,40 @@ contract AegisKeyRWATest is Test {
 
     function testCreateStartsReviewRequiredAndCannotActivate() public {
         uint256 roomId = _createRoom();
-        AegisKeyRWA.DataRoom memory room = rwa.getRoom(roomId);
-        assertEq(uint8(room.status), uint8(AegisKeyRWA.RoomStatus.ReviewRequired));
+        VitneraRWA.DataRoom memory room = rwa.getRoom(roomId);
+        assertEq(uint8(room.status), uint8(VitneraRWA.RoomStatus.ReviewRequired));
         assertEq(room.version, 1);
 
         vm.prank(issuer);
-        vm.expectRevert(AegisKeyRWA.InvalidReview.selector);
+        vm.expectRevert(VitneraRWA.InvalidReview.selector);
         rwa.activateDataRoom(roomId);
     }
 
     function testAIReviewGatesActivation() public {
         uint256 roomId = _createRoom();
-        uint256 reviewId = _recordReview(roomId, ROOT_V1, 1, AegisKeyRWA.ReviewStatus.ReviewReady);
+        uint256 reviewId = _recordReview(roomId, ROOT_V1, 1, VitneraRWA.ReviewStatus.ReviewReady);
 
         vm.prank(issuer);
         rwa.activateDataRoom(roomId);
 
-        AegisKeyRWA.DataRoom memory room = rwa.getRoom(roomId);
+        VitneraRWA.DataRoom memory room = rwa.getRoom(roomId);
         assertEq(room.currentReviewId, reviewId);
-        assertEq(uint8(room.status), uint8(AegisKeyRWA.RoomStatus.Active));
+        assertEq(uint8(room.status), uint8(VitneraRWA.RoomStatus.Active));
         assertTrue(rwa.isRoomReviewReady(roomId));
     }
 
     function testNeedsReviewCannotActivate() public {
         uint256 roomId = _createRoom();
-        _recordReview(roomId, ROOT_V1, 1, AegisKeyRWA.ReviewStatus.NeedsReview);
+        _recordReview(roomId, ROOT_V1, 1, VitneraRWA.ReviewStatus.NeedsReview);
 
         vm.prank(issuer);
-        vm.expectRevert(AegisKeyRWA.InvalidReview.selector);
+        vm.expectRevert(VitneraRWA.InvalidReview.selector);
         rwa.activateDataRoom(roomId);
     }
 
     function testVerifierAttestationIsRootBoundAndReplayProtected() public {
         uint256 roomId = _createRoom();
-        AegisKeyRWA.VerifierAttestation memory attestation = AegisKeyRWA.VerifierAttestation({
+        VitneraRWA.VerifierAttestation memory attestation = VitneraRWA.VerifierAttestation({
             roomId: roomId,
             roomVersion: 1,
             documentRoot: ROOT_V1,
@@ -82,24 +82,24 @@ contract AegisKeyRWATest is Test {
         uint256 attestationId = rwa.recordVerifierAttestation(attestation, signature);
         assertEq(rwa.getVerifierAttestation(attestationId).verifier, verifier);
 
-        vm.expectRevert(AegisKeyRWA.InvalidAttestation.selector);
+        vm.expectRevert(VitneraRWA.InvalidAttestation.selector);
         rwa.recordVerifierAttestation(attestation, signature);
     }
 
     function testRejectsWrongRootAndReplayNonce() public {
         uint256 roomId = _createRoom();
-        AegisKeyRWA.AIReviewAttestation memory wrong =
-            _attestation(roomId, ROOT_V2, 1, AegisKeyRWA.ReviewStatus.ReviewReady, 0);
+        VitneraRWA.AIReviewAttestation memory wrong =
+            _attestation(roomId, ROOT_V2, 1, VitneraRWA.ReviewStatus.ReviewReady, 0);
         bytes memory wrongSignature = _sign(wrong);
-        vm.expectRevert(AegisKeyRWA.InvalidAttestation.selector);
+        vm.expectRevert(VitneraRWA.InvalidAttestation.selector);
         rwa.recordAIReview(wrong, wrongSignature);
 
-        AegisKeyRWA.AIReviewAttestation memory valid =
-            _attestation(roomId, ROOT_V1, 1, AegisKeyRWA.ReviewStatus.ReviewReady, 0);
+        VitneraRWA.AIReviewAttestation memory valid =
+            _attestation(roomId, ROOT_V1, 1, VitneraRWA.ReviewStatus.ReviewReady, 0);
         bytes memory signature = _sign(valid);
         rwa.recordAIReview(valid, signature);
 
-        vm.expectRevert(AegisKeyRWA.InvalidAttestation.selector);
+        vm.expectRevert(VitneraRWA.InvalidAttestation.selector);
         rwa.recordAIReview(valid, signature);
     }
 
@@ -107,7 +107,7 @@ contract AegisKeyRWATest is Test {
         uint256 roomId = _createActiveRoom();
 
         vm.prank(investor);
-        vm.expectRevert(AegisKeyRWA.InvalidPayment.selector);
+        vm.expectRevert(VitneraRWA.InvalidPayment.selector);
         rwa.requestAccess{ value: 1 wei }(roomId, keccak256("investor-public-key"));
 
         uint256 requestId = _requestAccess(roomId);
@@ -146,7 +146,7 @@ contract AegisKeyRWATest is Test {
     function testExpiredRequestCanBeRefunded() public {
         uint256 roomId = _createActiveRoom();
         uint256 requestId = _requestAccess(roomId);
-        AegisKeyRWA.AccessRequest memory request = rwa.getAccessRequest(requestId);
+        VitneraRWA.AccessRequest memory request = rwa.getAccessRequest(requestId);
 
         vm.warp(request.expiresAt);
         vm.prank(investor);
@@ -159,20 +159,20 @@ contract AegisKeyRWATest is Test {
         uint256 requestId = _requestAccess(roomId);
 
         vm.prank(issuer);
-        vm.expectRevert(AegisKeyRWA.InvalidConfiguration.selector);
+        vm.expectRevert(VitneraRWA.InvalidConfiguration.selector);
         rwa.updateDocumentRoot(roomId, ROOT_V2, keccak256("metadata-v2"), "ipfs://metadata-v2", KEY_V1);
 
         vm.prank(issuer);
         rwa.updateDocumentRoot(roomId, ROOT_V2, keccak256("metadata-v2"), "ipfs://metadata-v2", KEY_V2);
 
-        AegisKeyRWA.DataRoom memory room = rwa.getRoom(roomId);
+        VitneraRWA.DataRoom memory room = rwa.getRoom(roomId);
         assertEq(room.version, 2);
         assertEq(room.currentReviewId, 0);
-        assertEq(uint8(room.status), uint8(AegisKeyRWA.RoomStatus.ReviewRequired));
+        assertEq(uint8(room.status), uint8(VitneraRWA.RoomStatus.ReviewRequired));
         assertFalse(rwa.isRoomReviewReady(roomId));
 
         vm.prank(issuer);
-        vm.expectRevert(AegisKeyRWA.InvalidStatus.selector);
+        vm.expectRevert(VitneraRWA.InvalidStatus.selector);
         rwa.approveAccess(requestId, keccak256("envelope"), "ipfs://stale-envelope");
 
         vm.prank(investor);
@@ -188,7 +188,7 @@ contract AegisKeyRWATest is Test {
 
         vm.prank(issuer);
         rwa.revokeAccess(requestId);
-        assertEq(uint8(rwa.getAccessRequest(requestId).status), uint8(AegisKeyRWA.RequestStatus.Revoked));
+        assertEq(uint8(rwa.getAccessRequest(requestId).status), uint8(VitneraRWA.RequestStatus.Revoked));
     }
 
     function testCannotOpenDuplicatePendingOrApprovedRequest() public {
@@ -196,7 +196,7 @@ contract AegisKeyRWATest is Test {
         _requestAccess(roomId);
 
         vm.prank(investor);
-        vm.expectRevert(AegisKeyRWA.ExistingRequest.selector);
+        vm.expectRevert(VitneraRWA.ExistingRequest.selector);
         rwa.requestAccess{ value: PRICE }(roomId, keccak256("second-public-key"));
     }
 
@@ -205,7 +205,7 @@ contract AegisKeyRWATest is Test {
         vm.assume(wrongAmount != PRICE);
         vm.deal(investor, uint256(wrongAmount) + 1 ether);
         vm.prank(investor);
-        vm.expectRevert(AegisKeyRWA.InvalidPayment.selector);
+        vm.expectRevert(VitneraRWA.InvalidPayment.selector);
         rwa.requestAccess{ value: wrongAmount }(roomId, keccak256("investor-public-key"));
     }
 
@@ -225,7 +225,7 @@ contract AegisKeyRWATest is Test {
 
     function _createActiveRoom() internal returns (uint256 roomId) {
         roomId = _createRoom();
-        _recordReview(roomId, ROOT_V1, 1, AegisKeyRWA.ReviewStatus.ReviewReady);
+        _recordReview(roomId, ROOT_V1, 1, VitneraRWA.ReviewStatus.ReviewReady);
         vm.prank(issuer);
         rwa.activateDataRoom(roomId);
     }
@@ -235,13 +235,12 @@ contract AegisKeyRWATest is Test {
         return rwa.requestAccess{ value: PRICE }(roomId, keccak256("investor-public-key"));
     }
 
-    function _recordReview(uint256 roomId, bytes32 root, uint64 version, AegisKeyRWA.ReviewStatus status)
+    function _recordReview(uint256 roomId, bytes32 root, uint64 version, VitneraRWA.ReviewStatus status)
         internal
         returns (uint256)
     {
         uint256 nonce = rwa.reviewerNonces(reviewer);
-        AegisKeyRWA.AIReviewAttestation memory attestation =
-            _attestation(roomId, root, version, status, nonce);
+        VitneraRWA.AIReviewAttestation memory attestation = _attestation(roomId, root, version, status, nonce);
         return rwa.recordAIReview(attestation, _sign(attestation));
     }
 
@@ -249,10 +248,10 @@ contract AegisKeyRWATest is Test {
         uint256 roomId,
         bytes32 root,
         uint64 version,
-        AegisKeyRWA.ReviewStatus status,
+        VitneraRWA.ReviewStatus status,
         uint256 nonce
-    ) internal view returns (AegisKeyRWA.AIReviewAttestation memory) {
-        return AegisKeyRWA.AIReviewAttestation({
+    ) internal view returns (VitneraRWA.AIReviewAttestation memory) {
+        return VitneraRWA.AIReviewAttestation({
             roomId: roomId,
             roomVersion: version,
             documentRoot: root,
@@ -266,7 +265,7 @@ contract AegisKeyRWATest is Test {
         });
     }
 
-    function _sign(AegisKeyRWA.AIReviewAttestation memory attestation) internal view returns (bytes memory) {
+    function _sign(VitneraRWA.AIReviewAttestation memory attestation) internal view returns (bytes memory) {
         bytes32 digest = rwa.hashReviewAttestation(attestation);
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(reviewerKey, digest);
         return abi.encodePacked(r, s, v);

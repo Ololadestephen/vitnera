@@ -6,7 +6,7 @@ import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import { Ownable2Step, Ownable } from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract AegisKeyRWA is EIP712, Ownable2Step, ReentrancyGuard {
+contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
     using ECDSA for bytes32;
 
     uint256 public constant MAX_URI_BYTES = 240;
@@ -223,7 +223,7 @@ contract AegisKeyRWA is EIP712, Ownable2Step, ReentrancyGuard {
     error UnsupportedTemplate();
     error UnsupportedPolicyVersion();
 
-    constructor(address initialOwner) EIP712("AegisKey RWA", "1") Ownable(initialOwner) {
+    constructor(address initialOwner) EIP712("Vitnera RWA", "1") Ownable(initialOwner) {
         if (initialOwner == address(0)) revert InvalidConfiguration();
     }
 

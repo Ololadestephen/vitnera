@@ -15,10 +15,7 @@ export const botchain = defineChain({
 export const appConfig = {
   chainId,
   rpcUrl,
-  // Accept the old variable during deployment migration; new environments should use VITE_VITNERA_CONTRACT.
-  contract: (import.meta.env.VITE_VITNERA_CONTRACT ?? import.meta.env.VITE_AEGISKEY_RWA_CONTRACT) as
-    | Address
-    | undefined,
+  contract: import.meta.env.VITE_VITNERA_CONTRACT as Address | undefined,
   storageApi: (import.meta.env.VITE_STORAGE_API_URL ?? "http://localhost:8787").replace(/\/$/u, ""),
   reviewerApi: (import.meta.env.VITE_REVIEWER_API_URL ?? "http://localhost:8790").replace(/\/$/u, ""),
   deploymentBlock: BigInt(import.meta.env.VITE_DEPLOYMENT_BLOCK ?? "0"),

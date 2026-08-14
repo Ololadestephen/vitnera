@@ -17,12 +17,22 @@ VERIFIER_ADDRESS=0x...
 Run:
 
 ```bash
-cd botchain-rwa/contracts
+cd contracts
 source ../.env
-forge script script/Deploy.s.sol:DeployAegisKeyRWA --rpc-url "$BOTCHAIN_RPC_URL" --broadcast
+forge script script/DeployVitnera.s.sol:DeployVitneraRWA --rpc-url "$BOTCHAIN_RPC_URL" --broadcast
 ```
 
 Save the deployed contract address and first deployment block.
+
+Current BOT Chain testnet deployment:
+
+```env
+VITNERA_CONTRACT=0xE2278a15d5ab720e41805B7d84A794DA911f4b01
+VITE_VITNERA_CONTRACT=0xE2278a15d5ab720e41805B7d84A794DA911f4b01
+VITE_DEPLOYMENT_BLOCK=19850136
+```
+
+Deployment transaction: [`0x0ac89868…b415393`](https://scan.botchain.ai/tx/0x0ac89868e4f1448af465bdb732e2a2d689911f854413d0511de515203b415393).
 
 ## 2. Reviewer
 
@@ -83,12 +93,12 @@ VITE_REVIEWER_API_URL=https://reviewer.example.com
 Build settings:
 
 ```text
-Root directory: botchain-rwa
+Root directory: repository root
 Build command: npm install && npm run build -w @vitnera/web
 Output directory: apps/web/dist
 ```
 
-The SPA rewrite in `botchain-rwa/vercel.json` keeps client-side routes working after refresh.
+The SPA rewrite in `vercel.json` keeps client-side routes working after refresh.
 
 ## Production Checklist
 
@@ -98,4 +108,4 @@ The SPA rewrite in `botchain-rwa/vercel.json` keeps client-side routes working a
 - Review the configured AI provider's data controls before processing sensitive documents. Do not claim zero retention unless the deployed provider account guarantees it.
 - Fund and monitor the reviewer/deployer operational wallets separately.
 - Verify the contract source in the BOT Chain explorer.
-- Run `npm test` and `npm run build` from `botchain-rwa` before release.
+- Run `npm test` and `npm run build` from the repository root before release.

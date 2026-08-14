@@ -53,9 +53,9 @@ export async function signReviewAttestation(input: {
 }) {
   const account = privateKeyToAccount(input.privateKey);
   const attestation = buildAttestation(input.request, input.report);
-  // This domain is fixed in the deployed pre-rebrand contract and cannot be renamed client-side.
+  // Must exactly match the EIP-712 domain configured by VitneraRWA.
   const domain = {
-    name: "AegisKey RWA",
+    name: "Vitnera RWA",
     version: "1",
     chainId: input.chainId,
     verifyingContract: input.contract,

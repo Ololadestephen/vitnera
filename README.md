@@ -25,7 +25,7 @@ flowchart LR
     Evidence["Evidence reader"]
 
     subgraph BOT["BOT Chain"]
-        Contract["AegisKeyRWA.sol"]
+        Contract["VitneraRWA.sol"]
     end
 
     Issuer -->|"Encrypt documents locally"| Web
@@ -82,7 +82,7 @@ flowchart LR
 
 ## Smart Contract
 
-The currently deployed implementation is [`contracts/src/AegisKeyRWA.sol`](./contracts/src/AegisKeyRWA.sol). Its Solidity class and EIP-712 domain retain the pre-rebrand name because changing either requires a new deployment. Vitnera treats this as a versioned compatibility boundary, not a public brand.
+[`contracts/src/VitneraRWA.sol`](./contracts/src/VitneraRWA.sol) is the canonical protocol implementation. The contract and reviewer use the EIP-712 domain `Vitnera RWA`, version `1`, so AI review attestations are cryptographically bound to this deployment identity.
 
 The contract implements:
 
@@ -203,12 +203,21 @@ BOT Chain is EVM-compatible.
 
 Official configuration: [BOT Chain developer quick guide](https://dev-docs.botchain.ai/docs/Developers/quick-guide/).
 
+Current Vitnera testnet deployment:
+
+| Item | Value |
+| --- | --- |
+| Contract | [`0xE2278a15d5ab720e41805B7d84A794DA911f4b01`](https://scan.botchain.ai/address/0xE2278a15d5ab720e41805B7d84A794DA911f4b01) |
+| Deployment block | `19850136` |
+| Deployment transaction | [`0x0ac89868…b415393`](https://scan.botchain.ai/tx/0x0ac89868e4f1448af465bdb732e2a2d689911f854413d0511de515203b415393) |
+| EIP-712 domain | `Vitnera RWA`, version `1` |
+
 Deploy and initialize:
 
 ```bash
 cd contracts
 source ../.env
-forge script script/Deploy.s.sol:DeployAegisKeyRWA \
+forge script script/DeployVitnera.s.sol:DeployVitneraRWA \
   --rpc-url "$BOTCHAIN_RPC_URL" \
   --broadcast
 ```
