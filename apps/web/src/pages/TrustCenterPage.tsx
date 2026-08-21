@@ -1,4 +1,11 @@
-import { Bot, Database, EyeOff, FileKey2, FolderLock, KeyRound, ShieldCheck, WalletCards } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Bot, Database, ExternalLink, EyeOff, Fingerprint, FileKey2, FolderLock, KeyRound, ShieldCheck, WalletCards } from "lucide-react";
+import { usePublicClient } from "wagmi";
+import { Busy } from "../components/Status";
+import { vitneraAbi } from "../lib/contract";
+import { appConfig, explorerTx, requireContract } from "../lib/config";
+
+const eventNames = ["DataRoomCreated", "AIReviewRecorded", "VerifierAttestationRecorded", "DataRoomActivated", "AccessRequested", "AccessApproved", "AccessRejected", "RequestRefunded", "EarningsWithdrawn"] as const;
 
 const stages = [
   {
@@ -50,16 +57,25 @@ const threats = [
   },
 ];
 
-export function SecurityPage() {
+export function TrustCenterPage() {
+  const client = usePublicClient();
+  const evidence = useQuery({
+    queryKey: ["rwa-evidence", client?.chain.id], enabled: Boolean(client),
+    queryFn: async () => {
+      const batches = await Promise.all(eventNames.map((eventName) => client!.getContractEvents({ address: requireContract(), abi: vitneraAbi, eventName, fromBlock: appConfig.deploymentBlock, toBlock: "latest" })));
+      return batches.flat().sort((a, b) => Number((b.blockNumber ?? 0n) - (a.blockNumber ?? 0n)));
+    },
+  });
+
   return (
     <div className="page page-enter">
       <div className="page-heading split-heading">
         <div>
           <p className="eyebrow">Threat model</p>
-          <h1>Who can see what</h1>
+          <h1>Trust Center</h1>
           <p>
             Vitnera is built so that every party — including us — sees the minimum needed at each step.
-            Here is exactly what is protected, from whom, and how you can verify it.
+            Here is exactly what is protected, from whom, how you can verify it, and the live on-chain proof.
           </p>
         </div>
         <div className="chain-stamp"><ShieldCheck /> Zero plaintext exposure</div>
@@ -95,6 +111,14 @@ export function SecurityPage() {
           <li><ShieldCheck size={16} /> Read the verified contract source on the explorer — no plaintext or key material appears in any event.</li>
           <li><WalletCards size={16} /> Check escrow flows: deposits move only between investor, contract, and issuer wallets.</li>
         </ul>
+      </section>
+
+      <section className="panel evidence-list trust-ledger">
+        <div className="section-title"><Fingerprint /><div><p className="eyebrow">On-chain evidence</p><h2>Live contract events</h2></div></div>
+        <p className="trust-ledger-note">Read directly from BOT Chain. No private files or room keys appear here.</p>
+        {evidence.isLoading && <Busy label="Reading contract events" />}
+        {evidence.data?.map((event, index) => <a key={`${event.transactionHash}-${index}`} href={explorerTx(event.transactionHash)} target="_blank" rel="noreferrer" className="evidence-row"><Fingerprint /><div><strong>{event.eventName}</strong><span>Block {event.blockNumber?.toString()} · {event.transactionHash.slice(0, 12)}...{event.transactionHash.slice(-8)}</span></div><ExternalLink /></a>)}
+        {!evidence.isLoading && evidence.data?.length === 0 && <div className="empty-state">No contract evidence yet.</div>}
       </section>
     </div>
   );

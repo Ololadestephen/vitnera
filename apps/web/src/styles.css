@@ -186,6 +186,8 @@ main { min-height: calc(100vh - 190px); }
 .verify-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 13px; }
 .verify-list li { display: flex; align-items: flex-start; gap: 11px; color: var(--muted); font-size: .84rem; line-height: 1.6; }
 .verify-list li svg { color: var(--teal); flex: none; margin-top: 3px; }
+.trust-ledger { margin-top: 20px; }
+.trust-ledger-note { margin: -8px 0 12px; color: var(--muted); font-size: .8rem; }
 
 @media (max-width: 900px) {
   .security-grid { grid-template-columns: 1fr; }
