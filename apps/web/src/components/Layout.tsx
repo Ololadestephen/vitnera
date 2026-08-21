@@ -7,8 +7,8 @@ import { WalletButton } from "./WalletButton";
 const nav = [
   ["Data Rooms", "/rooms"],
   ["My Access", "/access"],
-  ["Issuer Studio", "/studio"],
-  ["Trust Center", "/trust"],
+  ["Create", "/studio"],
+  ["How It Works", "/trust"],
 ] as const;
 
 export function Layout({ children }: PropsWithChildren) {
@@ -64,12 +64,13 @@ export function Layout({ children }: PropsWithChildren) {
             <div className="footer-column">
               <strong>Product</strong>
               <NavLink to="/rooms">Data rooms</NavLink>
-              <NavLink to="/studio">Issuer Studio</NavLink>
+              <NavLink to="/studio">Create a room</NavLink>
               <NavLink to="/access">My Access</NavLink>
             </div>
             <div className="footer-column">
               <strong>Resources</strong>
-              <NavLink to="/trust">Trust Center</NavLink>
+              <NavLink to="/trust">How It Works</NavLink>
+              <NavLink to="/trust">Security model</NavLink>
               <a href="https://github.com/Ololadestephen/vitnera" target="_blank" rel="noreferrer">GitHub</a>
               <a href="https://scan.botchain.ai" target="_blank" rel="noreferrer">BOT Chain explorer</a>
             </div>

@@ -189,7 +189,7 @@ export function HomePage() {
             <li><Check /> Bind each AI review to its exact document root.</li>
             <li><Check /> Revoke future-version access without false erasure claims.</li>
           </ul>
-          <Link className="text-link" to="/trust">Inspect the Trust Center <ArrowRight size={15} /></Link>
+          <Link className="text-link" to="/trust">See how it works <ArrowRight size={15} /></Link>
         </div>
 
         <div className="room-register" aria-label="Private room register preview">

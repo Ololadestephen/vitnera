@@ -6,7 +6,7 @@ import { DirectoryPage } from "./pages/DirectoryPage";
 import { HomePage } from "./pages/HomePage";
 import { RoomPage } from "./pages/RoomPage";
 import { StudioPage } from "./pages/StudioPage";
-import { TrustCenterPage } from "./pages/TrustCenterPage";
+import { HowItWorksPage } from "./pages/TrustCenterPage";
 
 export function App() {
   return (
@@ -17,7 +17,7 @@ export function App() {
         <Route path="/rooms/:roomId" element={<RoomPage />} />
         <Route path="/studio" element={<StudioPage />} />
         <Route path="/access" element={<AccessPage />} />
-        <Route path="/trust" element={<TrustCenterPage />} />
+        <Route path="/trust" element={<HowItWorksPage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>
       <Analytics />

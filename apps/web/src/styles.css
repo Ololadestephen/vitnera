@@ -216,6 +216,26 @@ main { min-height: calc(100vh - 190px); }
   .access-mode-options { grid-template-columns: 1fr; }
 }
 
+/* How It Works page */
+.how-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; align-items: start; }
+.how-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; border-top: 1px solid var(--line); counter-reset: none; }
+.how-steps li { display: grid; grid-template-columns: 40px 1fr; gap: 14px; padding: 17px 2px; border-bottom: 1px solid var(--line); }
+.how-steps li > span { font: 700 .66rem "SFMono-Regular", Consolas, monospace; letter-spacing: .1em; color: var(--teal); padding-top: 3px; }
+.how-steps strong { font-family: var(--display); font-weight: 560; font-size: 1.05rem; display: block; margin-bottom: 4px; }
+.how-steps p { margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.62; }
+.how-flow .root-stamp { margin-top: 16px; }
+.faq-panel { margin-bottom: 20px; }
+.faq-list { display: grid; gap: 0; border-top: 1px solid var(--line); }
+.faq-list details { border-bottom: 1px solid var(--line); }
+.faq-list summary { cursor: pointer; padding: 16px 4px; font-family: var(--display); font-weight: 560; font-size: 1.02rem; list-style-position: outside; }
+.faq-list summary::marker { color: var(--teal); }
+.faq-list details[open] summary { color: var(--teal); }
+.faq-list p { margin: 0 0 16px; padding-left: 4px; color: var(--muted); font-size: .84rem; line-height: 1.7; max-width: 760px; }
+
+@media (max-width: 900px) {
+  .how-grid { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 900px) {
   .security-grid { grid-template-columns: 1fr; }
 }
