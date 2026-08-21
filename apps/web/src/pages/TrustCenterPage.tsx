@@ -22,7 +22,7 @@ const issuerSteps = [
   },
   {
     title: "Run an AI review (optional)",
-    copy: "With your explicit consent, extracted text is sent to the reviewer service. It returns structured findings and signs them with EIP-712, bound to the exact document root — findings cannot be replayed against different evidence.",
+    copy: "With your explicit consent, extracted text is sent to the reviewer service. It returns structured findings and signs them with EIP-712, bound to the exact document root, so findings cannot be replayed against different evidence.",
   },
   {
     title: "Publish and get paid",
@@ -56,7 +56,7 @@ const faqs = [
   },
   {
     q: "What happens if I lose my browser session?",
-    a: "Issuers set up a passphrase-encrypted creator recovery identity once. Its recovery kit downloads as a file you store offline, and it can re-seal any future room version's key — no central custodian involved.",
+    a: "Issuers set up a passphrase-encrypted creator recovery identity once. Its recovery kit downloads as a file you store offline, and it can re-seal any future room version's key. No central custodian involved.",
   },
   {
     q: "Does the AI see everything?",
@@ -64,7 +64,7 @@ const faqs = [
   },
   {
     q: "What does ERC-3643 verification add?",
-    a: "Optionally, an issuer links a room to an ERC-3643 token. The contract then resolves that token's Identity Registry live and rejects deposits from unverified wallets — checked again at approval, before any key is released. General rooms remain available for any wallet.",
+    a: "Optionally, an issuer links a room to an ERC-3643 token. The contract then resolves that token's Identity Registry live and rejects deposits from unverified wallets. The check runs again at approval, before any key is released. General rooms remain available for any wallet.",
   },
   {
     q: "Can the issuer change the rules after I deposit?",
@@ -76,7 +76,7 @@ const faqs = [
   },
   {
     q: "How do refunds work?",
-    a: "Three paths, all enforced by the contract: the issuer rejects a request, the request expires after its TTL, or the room becomes unavailable. Refunds are claimable directly from the contract — no support ticket required.",
+    a: "Three paths, all enforced by the contract: the issuer rejects a request, the request expires after its TTL, or the room becomes unavailable. Refunds are claimable directly from the contract, no support ticket required.",
   },
   {
     q: "Is this financial advice?",
@@ -104,8 +104,8 @@ export function HowItWorksPage() {
             Vitnera connects two things that rarely meet: confidential real-world-asset evidence
             and on-chain investor eligibility. Issuers encrypt documents locally and publish
             verifiable data rooms. Investors deposit into contract escrow and receive
-            wallet-bound decryption keys. Nobody in the middle — including us — can read what
-            is sold or force a sale of what is not verified.
+            wallet-bound decryption keys. Nobody in the middle, including us, can read what
+            is sold or verify what should not be sold.
           </p>
         </div>
         <div className="chain-stamp"><ShieldCheck /> Zero plaintext exposure</div>
@@ -131,7 +131,7 @@ export function HowItWorksPage() {
         <article className="panel security-stage">
           <span className="security-icon"><FolderLock size={20} /></span>
           <h2>What is stored where</h2>
-          <p>IPFS holds ciphertext blobs and integrity-hashed metadata. BOT Chain holds commitments: metadata hash, ciphertext Merkle root, room-key commitment, review signatures, and escrow balances. Browsers hold keys — session-scoped, recoverable via the offline creator kit.</p>
+          <p>IPFS holds ciphertext blobs and integrity-hashed metadata. BOT Chain holds commitments: metadata hash, ciphertext Merkle root, room-key commitment, review signatures, and escrow balances. Browsers hold keys: session-scoped and recoverable via the offline creator kit.</p>
         </article>
         <article className="panel security-stage">
           <span className="security-icon"><Bot size={20} /></span>
@@ -141,12 +141,12 @@ export function HowItWorksPage() {
         <article className="panel security-stage">
           <span className="security-icon"><ShieldCheck size={20} /></span>
           <h2>Optional ERC-3643 gating</h2>
-          <p>Link a room to an ERC-3643 asset and only wallets verified by that asset's Identity Registry can deposit — enforced on-chain at deposit and again at key release. Eligibility comes from BOT Chain's official registry, not from Vitnera.</p>
+          <p>Link a room to an ERC-3643 asset and only wallets verified by that asset's Identity Registry can deposit. The rule is enforced on-chain at deposit and again at key release. Eligibility comes from BOT Chain's official registry, not from Vitnera.</p>
         </article>
         <article className="panel security-stage">
           <span className="security-icon"><KeyRound size={20} /></span>
           <h2>Key rotation on every version</h2>
-          <p>Publishing updated evidence mints a fresh room key. Old envelopes stop working for future versions without pretending past access can be erased — revocation is honest and scoped to what cryptography can actually enforce.</p>
+          <p>Publishing updated evidence mints a fresh room key. Old envelopes stop working for future versions without pretending past access can be erased. Revocation stays honest, scoped to what cryptography can actually enforce.</p>
         </article>
       </section>
 
@@ -155,7 +155,7 @@ export function HowItWorksPage() {
         <div className="threat-list">
           <article><strong>A storage provider tries to read the documents</strong><p>It only ever received AES-256-GCM ciphertext. The contract stores the ciphertext Merkle root, so swapped or truncated files fail verification before decryption is even attempted.</p></article>
           <article><strong>Someone intercepts an investor's key envelope</strong><p>Useless without that investor's private key. Each envelope is sealed with ephemeral X25519 key agreement to exactly one recipient public key.</p></article>
-          <article><strong>Verification lapses after an investor deposits</strong><p>On regulated rooms, approval resolves the registry again and refuses to release the key. The deposit stays recoverable — rejection and expiry paths never depend on verification status.</p></article>
+          <article><strong>Verification lapses after an investor deposits</strong><p>On regulated rooms, approval resolves the registry again and refuses to release the key. The deposit stays recoverable, since rejection and expiry paths never depend on verification status.</p></article>
           <article><strong>The issuer loses their browser</strong><p>The room key is sealed to a passphrase-encrypted creator recovery identity whose kit lives offline. One kit recovers every future room version.</p></article>
           <article><strong>Public metadata is tampered with</strong><p>Every client re-hashes fetched metadata and compares it with the hash recorded at creation before trusting a single field.</p></article>
           <article><strong>The AI provider retains confidential text</strong><p>Reviews are opt-in per room version with a versioned consent statement, and no review is needed while a room stays in draft.</p></article>
