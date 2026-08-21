@@ -14,6 +14,7 @@
     "@fontsource-variable/manrope": "^5.3.0",
     "@fontsource-variable/newsreader": "^5.3.0",
     "@tanstack/react-query": "^5.83.0",
+    "@vercel/analytics": "^2.0.1",
     "@vitnera/core": "0.1.0",
     "lucide-react": "^0.468.0",
     "pdfjs-dist": "^5.3.93",

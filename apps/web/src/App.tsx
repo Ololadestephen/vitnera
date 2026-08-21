@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react";
 import { Route, Routes } from "react-router-dom";
 import { Layout } from "./components/Layout";
 import { AccessPage } from "./pages/AccessPage";
@@ -21,6 +22,7 @@ export function App() {
         <Route path="/security" element={<SecurityPage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>
+      <Analytics />
     </Layout>
   );
 }
