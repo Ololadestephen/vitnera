@@ -1,7 +1,7 @@
 import { Search, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { formatEther } from "viem";
+import { formatEther, zeroAddress } from "viem";
 import { Busy, Status } from "../components/Status";
 import { useRooms } from "../hooks/useRooms";
 import { roomStatuses } from "../lib/contract";
@@ -38,7 +38,7 @@ export function DirectoryPage() {
       <div className="room-grid">
         {visible.map((room) => (
           <article className="room-card" key={room.id.toString()}>
-            <div className="card-top"><span>ROOM {room.id.toString().padStart(3, "0")}</span><Status tone={room.status === 1 ? "good" : "warn"}>{roomStatuses[room.status]}</Status></div>
+            <div className="card-top"><span>ROOM {room.id.toString().padStart(3, "0")}</span><div className="card-top-badges">{room.regulatedToken !== zeroAddress && <span className="erc3643-chip">ERC-3643</span>}<Status tone={room.status === 1 ? "good" : "warn"}>{roomStatuses[room.status]}</Status></div></div>
             <div className="room-card-body">
               <p className="overline">{room.metadata ? [room.metadata.assetType.replaceAll("_", " "), room.metadata.assetLocation].filter(Boolean).join(" · ") : "Metadata unavailable"}</p>
               <h2>{room.metadata?.title ?? `Data room ${room.id}`}</h2>

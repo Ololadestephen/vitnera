@@ -43,6 +43,7 @@ export type ChainRoom = {
   createdAt: bigint;
   updatedAt: bigint;
   status: number;
+  regulatedToken: `0x${string}`;
   metadata?: PublicRoomMetadata;
   metadataVerified: boolean;
 };

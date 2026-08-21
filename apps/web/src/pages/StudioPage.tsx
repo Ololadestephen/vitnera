@@ -23,7 +23,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, Bot, CircleDollarSign, FileKey, KeyRound, RefreshCw, UploadCloud } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { decodeEventLog, formatEther, keccak256, parseEther, toBytes, type Hex } from "viem";
+import { decodeEventLog, formatEther, getAddress, isAddress, keccak256, parseEther, toBytes, zeroAddress, type Address, type Hex } from "viem";
 import { useAccount } from "wagmi";
 import { Busy, Notice, Status } from "../components/Status";
 import { useRooms } from "../hooks/useRooms";
@@ -31,8 +31,9 @@ import { useTransaction } from "../hooks/useTransaction";
 import { useCreatorRecovery } from "../hooks/useCreatorRecovery";
 import { useRoomLifecycle } from "../hooks/useRoomLifecycle";
 import { useAccessRequests } from "../hooks/useAccessRequests";
-import { reviewStatuses, vitneraAbi, requestStatuses, roomStatuses } from "../lib/contract";
+import { reviewStatuses, vitneraAbi, requestStatuses, roomStatuses, erc3643RegistryAbi } from "../lib/contract";
 import { appConfig, explorerTx, requireContract } from "../lib/config";
+import { explorerAddress, isInvestorVerified, resolveRegulatedAsset } from "../lib/erc3643";
 import {
   downloadJson,
   loadRoomKey,
@@ -80,6 +81,8 @@ export function StudioPage() {
   const [location, setLocation] = useState("");
   const [assetType, setAssetType] = useState<RwaAssetType>("other");
   const [price, setPrice] = useState("0.05");
+  const [regulatedMode, setRegulatedMode] = useState(false);
+  const [regulatedTokenInput, setRegulatedTokenInput] = useState("");
   const [message, setMessage] = useState<string>();
   const [actionError, setActionError] = useState<unknown>();
   const [progress, setProgress] = useState<string>();
@@ -118,6 +121,13 @@ export function StudioPage() {
     queryKey: ["issuer-earnings", address], enabled: Boolean(tx.client && address),
     queryFn: () => tx.client!.readContract({ address: requireContract(), abi: vitneraAbi, functionName: "claimableEarnings", args: [address!] }),
   });
+  const draftRegulatedToken = regulatedMode && isAddress(regulatedTokenInput) ? getAddress(regulatedTokenInput) : undefined;
+  const draftAssetInfo = useQuery({
+    queryKey: ["regulated-asset", draftRegulatedToken],
+    enabled: Boolean(tx.client && draftRegulatedToken),
+    queryFn: () => resolveRegulatedAsset(tx.client!, draftRegulatedToken!),
+  });
+  const selectedIsRegulated = Boolean(selected && selected.regulatedToken !== zeroAddress);
 
   function chooseFiles(files: FileList | null) {
     if (!files) return;
@@ -186,6 +196,8 @@ export function StudioPage() {
     if (!title.trim() || !summary.trim()) throw new Error("Add a title and generate the public summary first");
     if (!creatorRecovery) throw new Error("Set up or import your creator recovery identity first");
     if (parseEther(price) <= 0n) throw new Error("Access deposit must be greater than zero");
+    if (regulatedMode && !draftRegulatedToken) throw new Error("Enter a valid ERC-3643 token address for regulated access");
+    const regulatedLink: Address = draftRegulatedToken ?? zeroAddress;
     const roomKey = await generateRoomKey();
     const draftId = crypto.randomUUID();
     const prepared = await prepareVersion(draftId, 1, roomKey.bytes);
@@ -214,7 +226,7 @@ export function StudioPage() {
     const receipt = await tx.send(() => tx.wallet!.writeContract({
       address: requireContract(), abi: vitneraAbi, functionName: "createDataRoom",
       args: [metadataHash, metadataUpload.uri, prepared.root, roomKey.commitment, termsHash,
-        keccak256(toBytes(RWA_BASIC_TEMPLATE_ID)), parseEther(price), 172800n],
+        keccak256(toBytes(RWA_BASIC_TEMPLATE_ID)), parseEther(price), 172800n, regulatedLink],
     }));
     const created = receipt.logs.flatMap((log) => {
       try { const event = decodeEventLog({ abi: vitneraAbi, data: log.data, topics: log.topics }); return event.eventName === "DataRoomCreated" ? [event.args.roomId] : []; }
@@ -398,6 +410,19 @@ export function StudioPage() {
     tx, selected, resolveRoomKey: resolveRoomKeyForApproval, notify: setMessage,
   });
   const { pauseRoom, resumeRoom, archiveRoom } = useRoomLifecycle({ tx, selected, notify: setMessage });
+  const requestVerification = useQuery({
+    queryKey: ["request-verification", selected?.id.toString(), requests.data?.map((item) => item.id.toString()).join(",")],
+    enabled: Boolean(tx.client && selectedIsRegulated && (requests.data?.length ?? 0) > 0),
+    queryFn: async () => {
+      const asset = await resolveRegulatedAsset(tx.client!, selected!.regulatedToken);
+      if (!asset) return {} as Record<string, boolean | null>;
+      const entries = await Promise.all(requests.data!.map(async (item) => [
+        item.investor.toLowerCase(),
+        await isInvestorVerified(tx.client!, asset.registry, item.investor),
+      ] as const));
+      return Object.fromEntries(entries) as Record<string, boolean | null>;
+    },
+  });
 
   async function exportKey() {
     if (!selected || !address) throw new Error("Select a room first");
@@ -476,6 +501,25 @@ export function StudioPage() {
           <label className="field"><span>Room title</span><input value={title} onChange={(event) => { setTitle(event.target.value); setSummary(""); }} placeholder="Equipment evidence room" /></label>
           <div className="private-summary-field"><div><span>Public summary</span><small>Generated locally from public labels only</small></div>{summary ? <p>{summary}</p> : <p className="summary-placeholder">Generate a safe marketplace summary after adding a title and evidence.</p>}<button className="button secondary small" disabled={!title.trim() || documents.length === 0} onClick={generatePublicSummary}>{summary ? "Regenerate summary" : "Generate private summary"}</button></div>
           <label className="field"><span>Access deposit (BOT)</span><input type="number" min="0.000001" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} /></label>
+          <div className="access-mode-field">
+            <span>Investor eligibility</span>
+            <div className="access-mode-options">
+              <label className={regulatedMode ? "" : "active"}><input type="radio" name="access-mode" checked={!regulatedMode} onChange={() => setRegulatedMode(false)} /><strong>General</strong><small>Any wallet with the deposit</small></label>
+              <label className={regulatedMode ? "active" : ""}><input type="radio" name="access-mode" checked={regulatedMode} onChange={() => setRegulatedMode(true)} /><strong>ERC-3643 verified</strong><small>Only wallets verified by a linked asset's Identity Registry</small></label>
+            </div>
+            {regulatedMode && <>
+              <label className="field compact-field"><span>ERC-3643 token address</span><input value={regulatedTokenInput} onChange={(event) => setRegulatedTokenInput(event.target.value.trim())} placeholder="0x… linked asset (PRWA)" spellCheck={false} /></label>
+              {regulatedTokenInput && !draftRegulatedToken && <p className="privacy-note">Enter a valid 0x token address.</p>}
+              {draftAssetInfo.data && <div className="regulated-preview">
+                <span>Linked asset</span>
+                <strong>{draftAssetInfo.data.name ?? "ERC-3643 compatible"}{draftAssetInfo.data.symbol ? ` · ${draftAssetInfo.data.symbol}` : ""}</strong>
+                <small>{draftAssetInfo.data.paused ? "Token paused" : "Token active"} · registry discovered from the token</small>
+                <a href={explorerAddress(draftAssetInfo.data.registry)} target="_blank" rel="noreferrer">Identity Registry</a>
+                {draftAssetInfo.data.compliance && <a href={explorerAddress(draftAssetInfo.data.compliance)} target="_blank" rel="noreferrer">Compliance</a>}
+              </div>}
+              <p className="privacy-note">Eligibility is enforced on-chain before deposit and again at approval. Vitnera does not verify identities itself; it consumes the asset's official ERC-3643 registry.</p>
+            </>}
+          </div>
           <details className="room-optional-details"><summary>Optional asset details</summary><label className="field"><span>Asset type</span><select value={assetType} onChange={(event) => { setAssetType(event.target.value as RwaAssetType); setSummary(""); }}>{rwaAssetTypes.map((type) => <option key={type} value={type}>{assetTypeLabels[type]}</option>)}</select></label><label className="field"><span>Broad location</span><input value={location} onChange={(event) => { setLocation(event.target.value); setSummary(""); }} placeholder="Optional, for example West Africa" /></label></details>
           <button className="button primary wide" disabled={tx.pending || Boolean(progress) || documents.length === 0 || !creatorRecovery || !summary.trim()} onClick={() => void runAction(createRoom)}>{tx.pending || progress ? <Busy label={progress ?? "Creating"} /> : "Encrypt, upload, and create draft"}</button>
           {documents.length === 0 && <p className="privacy-note">Add the evidence files in Step 1 to continue.</p>}
@@ -503,7 +547,7 @@ export function StudioPage() {
           <details className="legacy-recovery"><summary>Legacy per-room backup</summary><p>Only use this for rooms created before creator recovery was introduced.</p><label className="field"><span>Legacy backup passphrase</span><input type="password" value={legacyRecoveryPassphrase} onChange={(event) => setLegacyRecoveryPassphrase(event.target.value)} /></label><button className="button secondary wide" disabled={!selected} onClick={() => void runAction(exportKey)}>Export legacy room backup</button><label className="button secondary wide file-button"><KeyRound size={17} /> Restore legacy room backup<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void runAction(() => importRoomKey(file)); }} /></label></details>
         </div>
       </details>
-      {selected && <section className="panel requests-panel"><div className="section-title"><CircleDollarSign /><div><p className="eyebrow">Access requests</p><h2>Approve or refund investors</h2></div></div>{requests.isLoading && <Busy label="Reading requests" />}{requests.data?.map((request) => <div className="request-row" key={request.id.toString()}><div><strong>Request #{request.id.toString()}</strong><span>{request.investor.slice(0, 8)}...{request.investor.slice(-6)} · {formatEther(request.amount)} BOT</span></div><Status tone={request.status === 1 ? "warn" : request.status === 2 ? "good" : "neutral"}>{requestStatuses[request.status]}</Status>{request.status === 1 && <div className="row-actions"><button onClick={() => void runAction(() => approveRequest(request.id, request.encryptionPublicKey))}>Approve access</button><button onClick={() => void runAction(() => rejectRequest(request.id))}>Reject & refund</button></div>}</div>)}</section>}
+      {selected && <section className="panel requests-panel"><div className="section-title"><CircleDollarSign /><div><p className="eyebrow">Access requests{selectedIsRegulated ? " · ERC-3643 room" : ""}</p><h2>Approve or refund investors</h2></div></div>{selectedIsRegulated && <p className="privacy-note">This room only accepts wallets verified by the linked asset's Identity Registry. Approval re-checks verification on-chain before any key is released.</p>}{requests.isLoading && <Busy label="Reading requests" />}{requests.data?.map((request) => { const verifiedState = requestVerification.data?.[request.investor.toLowerCase()]; return <div className="request-row" key={request.id.toString()}><div><strong>Request #{request.id.toString()}</strong><span>{request.investor.slice(0, 8)}...{request.investor.slice(-6)} · {formatEther(request.amount)} BOT</span></div>{selectedIsRegulated && <Status tone={verifiedState === true ? "good" : verifiedState === false ? "warn" : "neutral"}>{verifiedState === true ? "ERC-3643 verified" : verifiedState === false ? "Not verified" : "Verification unknown"}</Status>}<Status tone={request.status === 1 ? "warn" : request.status === 2 ? "good" : "neutral"}>{requestStatuses[request.status]}</Status>{request.status === 1 && <div className="row-actions"><button onClick={() => void runAction(() => approveRequest(request.id, request.encryptionPublicKey))}>Approve access</button><button onClick={() => void runAction(() => rejectRequest(request.id))}>Reject & refund</button></div>}</div>; })}</section>}
     </div>
   );
 }

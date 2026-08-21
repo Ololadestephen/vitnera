@@ -1,14 +1,15 @@
 import { bytesToHex, exportRecoveryBundle, generateInvestorKeyPair } from "@vitnera/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Download, FileLock2, ShieldCheck } from "lucide-react";
+import { Clock, Download, ExternalLink, FileLock2, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { formatEther } from "viem";
+import { formatEther, zeroAddress } from "viem";
 import { useAccount } from "wagmi";
 import { Busy, Notice, Status } from "../components/Status";
 import { useRooms } from "../hooks/useRooms";
 import { useTransaction } from "../hooks/useTransaction";
 import { vitneraAbi, requestStatuses, reviewStatuses, roomStatuses } from "../lib/contract";
+import { explorerAddress, isInvestorVerified, resolveRegulatedAsset } from "../lib/erc3643";
 import { explorerTx, requireContract } from "../lib/config";
 import { downloadJson, saveInvestorKey } from "../lib/session";
 
@@ -47,6 +48,18 @@ export function RoomPage() {
     },
   });
 
+  const regulatedToken = room && room.regulatedToken !== zeroAddress ? room.regulatedToken : undefined;
+  const assetInfo = useQuery({
+    queryKey: ["regulated-asset", regulatedToken],
+    enabled: Boolean(tx.client && regulatedToken),
+    queryFn: () => resolveRegulatedAsset(tx.client!, regulatedToken!),
+  });
+  const verified = useQuery({
+    queryKey: ["investor-verified", assetInfo.data?.registry, address],
+    enabled: Boolean(tx.client && assetInfo.data?.registry && address),
+    queryFn: () => isInvestorVerified(tx.client!, assetInfo.data!.registry, address!),
+  });
+
   async function requestAccess() {
     if (!room || !address || !tx.wallet) throw new Error("Connect a BOT Chain wallet first");
     if (passphrase.length < 12) throw new Error("Set a recovery passphrase with at least 12 characters");
@@ -78,7 +91,7 @@ export function RoomPage() {
     <div className="page page-enter">
       <div className="room-hero">
         <div><p className="eyebrow">{room.metadata?.assetType.replaceAll("_", " ") ?? "Private asset"} · Room {room.id.toString()} · v{room.version.toString()}</p><h1>{room.metadata?.title ?? `Data room ${room.id}`}</h1><p>{room.metadata?.summary}</p></div>
-        <div className="price-block"><span>Escrow deposit</span><strong>{formatEther(room.accessPrice)} BOT</strong><Status tone={room.status === 1 ? "good" : "warn"}>{roomStatuses[room.status]}</Status></div>
+        <div className="price-block"><span>Escrow deposit</span><strong>{formatEther(room.accessPrice)} BOT</strong>{room.regulatedToken !== zeroAddress && <span className="erc3643-chip">ERC-3643 verified investors</span>}<Status tone={room.status === 1 ? "good" : "warn"}>{roomStatuses[room.status]}</Status></div>
       </div>
       <div className="detail-grid">
         <section className="panel document-index">
@@ -94,8 +107,21 @@ export function RoomPage() {
             <div className="request-state"><Status tone={currentRequest.status === 2 ? "good" : currentRequest.status === 1 ? "warn" : "neutral"}>{requestStatuses[currentRequest.status]}</Status><h2>{currentRequest.status === 2 ? "Access approved" : "Request recorded"}</h2><p>{currentRequest.status === 1 ? "Your BOT remains in escrow until approval, rejection, or expiry." : "Open My Access to retrieve the encrypted key envelope."}</p></div>
           ) : <><h2>Request protected access</h2><p>Your deposit is held by the contract. The issuer earns it only after approving a key envelope for this wallet.</p></>}
           {canRequest && <>
+            {regulatedToken && <div className="regulated-panel">
+              <div><span>Linked asset</span><strong>{assetInfo.data ? `${assetInfo.data.name ?? "ERC-3643 compatible"}${assetInfo.data.symbol ? ` · ${assetInfo.data.symbol}` : ""}` : <Busy label="Reading linked asset" />}</strong></div>
+              <Status tone={verified.data === true ? "good" : verified.data === false ? "warn" : "neutral"}>{verified.data === true ? "Your wallet: ERC-3643 verified" : verified.data === false ? "Your wallet: not verified" : "Verification unknown"}</Status>
+              <small>Eligibility is enforced on-chain before deposit and again at key release. Vitnera consumes the asset's official Identity Registry.</small>
+              <div className="regulated-links">
+                {assetInfo.data && <>
+                  <a href={explorerAddress(regulatedToken)} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Token</a>
+                  <a href={explorerAddress(assetInfo.data.registry)} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Registry</a>
+                  {assetInfo.data.compliance && <a href={explorerAddress(assetInfo.data.compliance)} target="_blank" rel="noreferrer"><ExternalLink size={14} /> Compliance</a>}
+                </>}
+              </div>
+            </div>}
             <label className="field"><span>Recovery passphrase</span><input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="12+ characters" /><small>An encrypted recovery file downloads before payment.</small></label>
-            <button className="button primary wide" disabled={tx.pending || !address} onClick={() => void requestAccess().catch(() => undefined)}>{tx.pending ? <Busy label="Submitting escrow" /> : `Request access · ${formatEther(room.accessPrice)} BOT`}</button>
+            <button className="button primary wide" disabled={tx.pending || !address || verified.data === false} onClick={() => void requestAccess().catch(() => undefined)}>{tx.pending ? <Busy label="Submitting escrow" /> : `Request access · ${formatEther(room.accessPrice)} BOT`}</button>
+            {verified.data === false && <div className="notice">This room requires ERC-3643 verification and your wallet is not verified by the linked asset's Identity Registry. The contract would reject the deposit. Contact the asset issuer to become eligible.</div>}
           </>}
           {currentRequest?.status === 2 && <><a className="button primary wide" href="/access"><Download size={17} /> Open My Access</a><p className="privacy-note"><ShieldCheck size={17} /> Private evidence summaries are available only after approved access.</p></>}
           {!address && <div className="notice">Connect a wallet to request access.</div>}

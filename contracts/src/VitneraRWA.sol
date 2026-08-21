@@ -5,6 +5,7 @@ import { ECDSA } from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import { EIP712 } from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 import { Ownable2Step, Ownable } from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import { ReentrancyGuard } from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import { IERC3643TokenLike, IERC3643IdentityRegistryLike } from "./interfaces/IERC3643Minimal.sol";
 
 contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
     using ECDSA for bytes32;
@@ -58,6 +59,7 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         uint64 createdAt;
         uint64 updatedAt;
         RoomStatus status;
+        address regulatedToken;
     }
 
     struct AIReview {
@@ -209,6 +211,9 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
     event AccessRevoked(uint256 indexed requestId, uint256 indexed roomId, address indexed investor);
     event EarningsWithdrawn(address indexed issuer, uint256 amount);
     event RefundWithdrawn(address indexed investor, uint256 amount);
+    /// @dev registry value is a historical snapshot taken at linking time; the
+    ///      live registry is always re-resolved from the token for decisions.
+    event RegulatedAssetLinked(uint256 indexed roomId, address indexed regulatedToken, address identityRegistry);
 
     error Unauthorized();
     error InvalidRoom();
@@ -227,6 +232,8 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
     error TransferFailed();
     error UnsupportedTemplate();
     error UnsupportedPolicyVersion();
+    error InvalidRegulatedToken();
+    error InvestorNotVerified();
 
     constructor(address initialOwner) EIP712("Vitnera RWA", "1") Ownable(initialOwner) {
         if (initialOwner == address(0)) revert InvalidConfiguration();
@@ -271,7 +278,8 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         bytes32 termsHash,
         bytes32 templateId,
         uint256 accessPrice,
-        uint64 requestTtl
+        uint64 requestTtl,
+        address regulatedToken
     ) external returns (uint256 roomId) {
         if (
             metadataHash == bytes32(0) || bytes(metadataUri).length == 0
@@ -280,6 +288,13 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         ) revert InvalidConfiguration();
         if (!supportedTemplates[templateId]) revert UnsupportedTemplate();
         if (requestTtl < MIN_REQUEST_TTL || requestTtl > MAX_REQUEST_TTL) revert InvalidConfiguration();
+
+        // A nonzero token opts the room into ERC-3643 investor gating. The call
+        // below proves interface compatibility only; legitimacy is not asserted.
+        address linkedRegistry;
+        if (regulatedToken != address(0)) {
+            linkedRegistry = _resolveIdentityRegistry(regulatedToken);
+        }
 
         roomId = ++roomCount;
         uint64 timestamp = uint64(block.timestamp);
@@ -297,12 +312,16 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
             requestTtl: requestTtl,
             createdAt: timestamp,
             updatedAt: timestamp,
-            status: RoomStatus.ReviewRequired
+            status: RoomStatus.ReviewRequired,
+            regulatedToken: regulatedToken
         });
 
         emit DataRoomCreated(
             roomId, msg.sender, templateId, documentRoot, metadataHash, metadataUri, accessPrice, 1
         );
+        if (regulatedToken != address(0)) {
+            emit RegulatedAssetLinked(roomId, regulatedToken, linkedRegistry);
+        }
     }
 
     function updateDocumentRoot(
@@ -511,6 +530,7 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         }
         if (encryptionPublicKey == bytes32(0)) revert InvalidPublicKey();
         if (msg.value != room.accessPrice) revert InvalidPayment();
+        _requireVerifiedInvestor(room, msg.sender);
 
         uint256 previousId = latestRequestId[roomId][room.version][msg.sender];
         if (previousId != 0) {
@@ -559,6 +579,10 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         ) {
             revert InvalidEnvelope();
         }
+        // Re-check at key release: an investor may lose verification between
+        // deposit and approval. Reverting here keeps regulated rooms compliant;
+        // the issuer's reject path refunds the deposit unconditionally.
+        _requireVerifiedInvestor(room, request.investor);
 
         request.status = RequestStatus.Approved;
         request.envelopeHash = envelopeHash;
@@ -731,6 +755,26 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         totalPendingEscrow -= request.amount;
         totalClaimableRefunds += request.amount;
         claimableRefunds[request.investor] += request.amount;
+    }
+
+    /// @dev Resolves the current identity registry from the token on every
+    ///      security decision so a registry update by the token owner is
+    ///      honored immediately. Uses raw staticcalls so EOAs, reverting
+    ///      contracts, and empty returns all fail closed.
+    function _resolveIdentityRegistry(address token) internal view returns (address) {
+        (bool ok, bytes memory ret) = token.staticcall(abi.encodeCall(IERC3643TokenLike.identityRegistry, ()));
+        if (!ok || ret.length != 32) revert InvalidRegulatedToken();
+        address registry = abi.decode(ret, (address));
+        if (registry == address(0)) revert InvalidRegulatedToken();
+        return registry;
+    }
+
+    function _requireVerifiedInvestor(DataRoom storage room, address investor) internal view {
+        if (room.regulatedToken == address(0)) return;
+        (bool ok, bytes memory ret) = _resolveIdentityRegistry(room.regulatedToken)
+            .staticcall(abi.encodeCall(IERC3643IdentityRegistryLike.isVerified, (investor)));
+        if (!ok || ret.length != 32) revert InvestorNotVerified();
+        if (!abi.decode(ret, (bool))) revert InvestorNotVerified();
     }
 
     function _sendValue(address recipient, uint256 amount) internal {

@@ -12,10 +12,10 @@ export const vitneraAbi = parseAbi([
   "function isRoomReviewAccepted(uint256) view returns (bool)",
   "function acknowledgedReviewId(uint256) view returns (uint256)",
   "function reviewAcknowledgementHash(uint256) view returns (bytes32)",
-  "function getRoom(uint256) view returns ((address issuer,bytes32 metadataHash,string metadataUri,bytes32 documentRoot,bytes32 keyCommitment,bytes32 termsHash,bytes32 templateId,uint256 accessPrice,uint256 currentReviewId,uint64 version,uint64 requestTtl,uint64 createdAt,uint64 updatedAt,uint8 status))",
+  "function getRoom(uint256) view returns ((address issuer,bytes32 metadataHash,string metadataUri,bytes32 documentRoot,bytes32 keyCommitment,bytes32 termsHash,bytes32 templateId,uint256 accessPrice,uint256 currentReviewId,uint64 version,uint64 requestTtl,uint64 createdAt,uint64 updatedAt,uint8 status,address regulatedToken))",
   "function getReview(uint256) view returns ((bytes32 documentRoot,bytes32 templateId,bytes32 riskFlagsHash,bytes32 reportHash,address reviewer,uint64 roomVersion,uint64 expiry,uint64 recordedAt,uint32 policyVersion,uint8 status))",
   "function getAccessRequest(uint256) view returns ((uint256 roomId,uint64 roomVersion,address investor,bytes32 encryptionPublicKey,uint256 amount,uint64 requestedAt,uint64 expiresAt,uint8 status,bytes32 envelopeHash,string envelopeUri))",
-  "function createDataRoom(bytes32 metadataHash,string metadataUri,bytes32 documentRoot,bytes32 keyCommitment,bytes32 termsHash,bytes32 templateId,uint256 accessPrice,uint64 requestTtl) returns (uint256)",
+  "function createDataRoom(bytes32 metadataHash,string metadataUri,bytes32 documentRoot,bytes32 keyCommitment,bytes32 termsHash,bytes32 templateId,uint256 accessPrice,uint64 requestTtl,address regulatedToken) returns (uint256)",
   "function updateDocumentRoot(uint256 roomId,bytes32 newDocumentRoot,bytes32 newMetadataHash,string newMetadataUri,bytes32 newKeyCommitment)",
   "function updateRoomTerms(uint256 roomId,bytes32 newTermsHash,uint256 newAccessPrice,uint64 newRequestTtl)",
   "function recordAIReview((uint256 roomId,uint64 roomVersion,bytes32 documentRoot,bytes32 templateId,uint8 reviewStatus,bytes32 riskFlagsHash,bytes32 reportHash,uint32 policyVersion,uint256 nonce,uint64 expiry) attestation,bytes signature) returns (uint256)",
@@ -45,6 +45,19 @@ export const vitneraAbi = parseAbi([
   "event AccessRevoked(uint256 indexed requestId,uint256 indexed roomId,address indexed investor)",
   "event EarningsWithdrawn(address indexed issuer,uint256 amount)",
   "event RefundWithdrawn(address indexed investor,uint256 amount)",
+  "event RegulatedAssetLinked(uint256 indexed roomId,address indexed regulatedToken,address identityRegistry)",
+]);
+
+export const erc3643TokenAbi = parseAbi([
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function identityRegistry() view returns (address)",
+  "function compliance() view returns (address)",
+  "function paused() view returns (bool)",
+]);
+
+export const erc3643RegistryAbi = parseAbi([
+  "function isVerified(address investor) view returns (bool)",
 ]);
 
 export const roomStatuses = ["Needs review", "Open", "Paused", "Archived"] as const;

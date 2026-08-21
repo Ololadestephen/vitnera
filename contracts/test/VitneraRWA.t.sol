@@ -286,6 +286,10 @@ contract VitneraRWATest is Test {
     }
 
     function _createRoom() internal returns (uint256) {
+        return _createRoom(address(0));
+    }
+
+    function _createRoom(address regulatedToken) internal returns (uint256) {
         vm.prank(issuer);
         return rwa.createDataRoom(
             keccak256("metadata-v1"),
@@ -295,7 +299,8 @@ contract VitneraRWATest is Test {
             keccak256("terms-v1"),
             RWA_BASIC_TEMPLATE,
             PRICE,
-            2 days
+            2 days,
+            regulatedToken
         );
     }
 
