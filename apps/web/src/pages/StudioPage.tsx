@@ -3,56 +3,45 @@ import {
   REVIEW_POLICY_VERSION,
   bytesToBase64,
   createCreatorRoomKeyEnvelope,
-  createKeyEnvelope,
   decryptDocument,
   documentMerkleRoot,
   encryptDocument,
-  envelopeHash,
-  exportCreatorRecoveryIdentity,
   exportRoomKeyRecovery,
-  generateCreatorRecoveryIdentity,
   generatePrivatePublicSummary,
   generateRoomKey,
   hashCanonical,
-  hexToBytes,
-  importCreatorRecoveryIdentity,
   importRoomKeyRecovery,
   openCreatorRoomKeyEnvelope,
   rwaAssetTypes,
   rwaDocumentTypes,
   sha256Hex,
   type AIReviewReport,
-  type CreatorRecoveryIdentity,
   type RwaAssetType,
   type RwaManifest,
 } from "@vitnera/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, Bot, CircleDollarSign, FileKey, KeyRound, RefreshCw, UploadCloud } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { decodeEventLog, formatEther, keccak256, parseEther, toBytes, type Hex } from "viem";
 import { useAccount } from "wagmi";
 import { Busy, Notice, Status } from "../components/Status";
 import { useRooms } from "../hooks/useRooms";
 import { useTransaction } from "../hooks/useTransaction";
-import { loadRoomRequests } from "../lib/chain";
+import { useCreatorRecovery } from "../hooks/useCreatorRecovery";
+import { useRoomLifecycle } from "../hooks/useRoomLifecycle";
+import { useAccessRequests } from "../hooks/useAccessRequests";
 import { reviewStatuses, vitneraAbi, requestStatuses, roomStatuses } from "../lib/contract";
 import { appConfig, explorerTx, requireContract } from "../lib/config";
 import {
   downloadJson,
-  loadCreatorRecoveryIdentity,
   loadRoomKey,
-  saveCreatorRecoveryIdentity,
   saveRoomKey,
 } from "../lib/session";
 import { fetchVerifiedBytes, uploadEncryptedBlob, uploadJson } from "../lib/storage";
 import type { DraftDocument, PublicRoomMetadata } from "../lib/types";
 
-const requiredTypes = [
-  "asset_overview",
-  "ownership_or_control",
-  "valuation_or_financial",
-] as const;
+const evidenceCategoryHint = "Classify each file with its dropdown. The AI review expects asset overview, ownership or control, and valuation or financial evidence.";
 
 const assetTypeLabels: Record<RwaAssetType, string> = {
   equipment: "Equipment",
@@ -91,9 +80,6 @@ export function StudioPage() {
   const [location, setLocation] = useState("");
   const [assetType, setAssetType] = useState<RwaAssetType>("other");
   const [price, setPrice] = useState("0.05");
-  const [creatorRecoveryPassphrase, setCreatorRecoveryPassphrase] = useState("");
-  const [legacyRecoveryPassphrase, setLegacyRecoveryPassphrase] = useState("");
-  const [creatorRecovery, setCreatorRecovery] = useState<CreatorRecoveryIdentity | null>(null);
   const [message, setMessage] = useState<string>();
   const [actionError, setActionError] = useState<unknown>();
   const [progress, setProgress] = useState<string>();
@@ -101,26 +87,26 @@ export function StudioPage() {
   const [acknowledgeFindings, setAcknowledgeFindings] = useState(false);
   const [reviewConsent, setReviewConsent] = useState(false);
 
-  useEffect(() => {
-    setCreatorRecovery(address ? loadCreatorRecoveryIdentity(address) : null);
-    setCreatorRecoveryPassphrase("");
-    setLegacyRecoveryPassphrase("");
-  }, [address]);
-
   const ownRooms = useMemo(() => (rooms.data ?? []).filter((room) => room.issuer.toLowerCase() === address?.toLowerCase()), [rooms.data, address]);
-  const existingRecoveryPublicKeys = useMemo(() => new Set(
-    ownRooms.flatMap((room) => room.metadata?.creatorRecoveryEnvelope?.recoveryPublicKey
-      ? [room.metadata.creatorRecoveryEnvelope.recoveryPublicKey]
-      : []),
-  ), [ownRooms]);
-  const requiresExistingCreatorRecovery = existingRecoveryPublicKeys.size > 0;
+  const {
+    creatorRecovery,
+    creatorRecoveryPassphrase,
+    setCreatorRecoveryPassphrase,
+    legacyRecoveryPassphrase,
+    setLegacyRecoveryPassphrase,
+    requiresExistingCreatorRecovery,
+    setupIdentity,
+    importKit: importCreatorKit,
+    exportKit: exportCreatorKit,
+  } = useCreatorRecovery({ address, ownRooms, notify: setMessage });
   const selected = ownRooms.find((room) => room.id.toString() === selectedId) ?? ownRooms[0];
-  const selectedHasKey = Boolean(selected && address && loadRoomKey(address, selected.id.toString(), Number(selected.version)));
-  const requests = useQuery({
-    queryKey: ["room-requests", selected?.id.toString()],
-    enabled: Boolean(tx.client && selected),
-    queryFn: () => loadRoomRequests(tx.client!, selected!.id),
-  });
+  const [selectedHasKey, setSelectedHasKey] = useState(false);
+  const refreshKeyState = useCallback(() => {
+    setSelectedHasKey(Boolean(selected && address && loadRoomKey(address, selected.id.toString(), Number(selected.version))));
+  }, [selected, address]);
+  useEffect(() => {
+    refreshKeyState();
+  }, [refreshKeyState]);
   const currentReview = useQuery({
     queryKey: ["current-room-review", selected?.currentReviewId.toString()],
     enabled: Boolean(tx.client && selected && selected.currentReviewId > 0n),
@@ -136,10 +122,10 @@ export function StudioPage() {
   function chooseFiles(files: FileList | null) {
     if (!files) return;
     setSummary("");
-    setDocuments(Array.from(files).map((file, index) => ({
+    setDocuments(Array.from(files).map((file) => ({
       id: crypto.randomUUID(), file,
-      type: (requiredTypes[index] ?? "supporting_document") as DraftDocument["type"],
-      required: index < requiredTypes.length,
+      type: "supporting_document" as DraftDocument["type"],
+      required: false,
     })));
   }
 
@@ -251,6 +237,7 @@ export function StudioPage() {
       setActionError(error);
     } finally {
       setProgress(undefined);
+      refreshKeyState();
     }
   }
 
@@ -397,49 +384,20 @@ export function StudioPage() {
     return texts;
   }
 
-  async function pauseRoom() {
-    if (!selected || !tx.wallet || selected.status !== 1) throw new Error("Only an open room can be paused");
-    await tx.send(() => tx.wallet!.writeContract({ address: requireContract(), abi: vitneraAbi, functionName: "pauseDataRoom", args: [selected.id] }));
-    await queryClient.invalidateQueries({ queryKey: ["rwa-rooms"] });
-    setMessage("New access requests are paused. Existing approved access is unchanged.");
-  }
-
-  async function resumeRoom() {
-    if (!selected || !tx.wallet || selected.status !== 2) throw new Error("Only a paused room can be reopened");
-    await tx.send(() => tx.wallet!.writeContract({ address: requireContract(), abi: vitneraAbi, functionName: "activateDataRoom", args: [selected.id] }));
-    await queryClient.invalidateQueries({ queryKey: ["rwa-rooms"] });
-    setMessage("The room is open to access requests again.");
-  }
-
-  async function archiveRoom() {
-    if (!selected || !tx.wallet || selected.status === 3) throw new Error("This room is already archived");
-    if (!window.confirm("Archive this room permanently? It cannot be reopened and will stop accepting new requests.")) return;
-    await tx.send(() => tx.wallet!.writeContract({ address: requireContract(), abi: vitneraAbi, functionName: "archiveDataRoom", args: [selected.id] }));
-    await queryClient.invalidateQueries({ queryKey: ["rwa-rooms"] });
-    setMessage("Room archived. Its on-chain history remains available.");
-  }
-
-  async function approveRequest(requestId: bigint, publicKey: Hex) {
-    if (!selected || !address || !tx.wallet) throw new Error("Select a room first");
+  async function resolveRoomKeyForApproval(): Promise<Uint8Array> {
+    if (!selected || !address) throw new Error("Select a room first");
     let roomKey = loadRoomKey(address, selected.id.toString(), Number(selected.version));
     if (!roomKey && selected.metadata?.creatorRecoveryEnvelope && creatorRecovery) {
       roomKey = await recoverRoomKeyFromCreatorIdentity(selected.metadata.creatorRecoveryEnvelope);
     }
     if (!roomKey) throw new Error("Import your creator recovery kit before approval");
-    const request = requests.data?.find((item) => item.id === requestId);
-    if (!request) throw new Error("Request not found");
-    const envelope = await createKeyEnvelope({ roomKey, recipientPublicKey: hexToBytes(publicKey), roomId: selected.id.toString(), roomVersion: Number(selected.version), investor: request.investor, metadataUri: selected.metadataUri });
-    const uploaded = await uploadJson(envelope, `vitnera-request-${requestId}-key-envelope.json`);
-    const keyEnvelopeHash = await envelopeHash(envelope);
-    await tx.send(() => tx.wallet!.writeContract({ address: requireContract(), abi: vitneraAbi, functionName: "approveAccess", args: [requestId, keyEnvelopeHash, uploaded.uri] }));
-    await queryClient.invalidateQueries({ queryKey: ["room-requests", selected.id.toString()] });
-    setMessage(`Request ${requestId} approved. Earnings are now claimable.`);
+    return roomKey;
   }
 
-  async function rejectRequest(requestId: bigint) {
-    await tx.send(() => tx.wallet!.writeContract({ address: requireContract(), abi: vitneraAbi, functionName: "rejectAccess", args: [requestId] }));
-    await queryClient.invalidateQueries({ queryKey: ["room-requests", selected?.id.toString()] });
-  }
+  const { requests, approveRequest, rejectRequest } = useAccessRequests({
+    tx, selected, resolveRoomKey: resolveRoomKeyForApproval, notify: setMessage,
+  });
+  const { pauseRoom, resumeRoom, archiveRoom } = useRoomLifecycle({ tx, selected, notify: setMessage });
 
   async function exportKey() {
     if (!selected || !address) throw new Error("Select a room first");
@@ -461,62 +419,6 @@ export function StudioPage() {
     }
     saveRoomKey(address, selected.id.toString(), Number(selected.version), roomKey);
     setMessage("Room key restored for this browser session.");
-  }
-
-  async function setupCreatorRecovery() {
-    if (!address) throw new Error("Connect an issuer wallet first");
-    if (requiresExistingCreatorRecovery) {
-      throw new Error("This wallet already has rooms. Import the creator recovery kit used to create them");
-    }
-    if (creatorRecoveryPassphrase.length < 12) {
-      throw new Error("Use a creator recovery passphrase with at least 12 characters");
-    }
-    const identity = generateCreatorRecoveryIdentity();
-    const bundle = await exportCreatorRecoveryIdentity({
-      identity,
-      wallet: address,
-      passphrase: creatorRecoveryPassphrase,
-    });
-    saveCreatorRecoveryIdentity(address, identity);
-    setCreatorRecovery(identity);
-    downloadJson(bundle, `vitnera-${address.slice(2, 10)}-creator-recovery.json`);
-    setCreatorRecoveryPassphrase("");
-    setMessage("Creator recovery is ready. Keep the downloaded encrypted kit and its passphrase in separate safe places.");
-  }
-
-  async function importCreatorRecovery(file: File) {
-    if (!address) throw new Error("Connect an issuer wallet first");
-    if (creatorRecoveryPassphrase.length < 12) {
-      throw new Error("Enter the creator recovery passphrase first");
-    }
-    const bundle = JSON.parse(await file.text()) as Parameters<typeof importCreatorRecoveryIdentity>[0];
-    if (bundle.wallet.toLowerCase() !== address.toLowerCase()) {
-      throw new Error("This creator recovery kit belongs to another wallet");
-    }
-    const identity = await importCreatorRecoveryIdentity(bundle, creatorRecoveryPassphrase);
-    const importedPublicKey = bytesToBase64(identity.publicKey);
-    if (requiresExistingCreatorRecovery && !existingRecoveryPublicKeys.has(importedPublicKey)) {
-      throw new Error("This kit does not match the recovery identity used by this wallet's existing rooms");
-    }
-    saveCreatorRecoveryIdentity(address, identity);
-    setCreatorRecovery(identity);
-    setCreatorRecoveryPassphrase("");
-    setMessage("Creator recovery loaded for this browser session.");
-  }
-
-  async function exportCreatorKit() {
-    if (!address || !creatorRecovery) throw new Error("Set up or import creator recovery first");
-    if (creatorRecoveryPassphrase.length < 12) {
-      throw new Error("Use a creator recovery passphrase with at least 12 characters");
-    }
-    const bundle = await exportCreatorRecoveryIdentity({
-      identity: creatorRecovery,
-      wallet: address,
-      passphrase: creatorRecoveryPassphrase,
-    });
-    downloadJson(bundle, `vitnera-${address.slice(2, 10)}-creator-recovery.json`);
-    setCreatorRecoveryPassphrase("");
-    setMessage("A fresh encrypted creator recovery kit was downloaded.");
   }
 
   async function recoverRoomKeyFromCreatorIdentity(
@@ -555,7 +457,7 @@ export function StudioPage() {
         <div className="room-tabs">{ownRooms.map((room) => <button key={room.id.toString()} className={selected?.id === room.id ? "active" : ""} onClick={() => selectRoom(room.id.toString())}><strong>{room.metadata?.title ?? `Room ${room.id}`}</strong><span>{roomStatuses[room.status]} · v{room.version.toString()}</span></button>)}</div>
         {ownRooms.length === 0 && <p>No rooms yet. Create your first encrypted asset room below.</p>}
         {selected && <div className="selected-room-manager"><div><p className="eyebrow">Selected room</p><h3>{selected.metadata?.title ?? `Room ${selected.id}`}</h3><p>{selected.status === 0 ? "Evidence is encrypted and registered. Record an AI report in Step 3, then make the separate issuer publish decision." : selected.status === 1 ? "This room is open and accepting protected access requests." : selected.status === 2 ? "New requests are paused. You can reopen it while the current review remains valid." : "This room is archived and retained as immutable history."}</p><span className={`room-key-state ${selectedHasKey ? "ready" : "missing"}`}>{selectedHasKey ? "Room key available" : "Room key missing in this browser"}</span></div><div className="room-management-actions">{selected.status === 1 && <button className="button secondary" disabled={tx.pending} onClick={() => void runAction(pauseRoom)}>Pause requests</button>}{selected.status === 2 && <button className="button primary" disabled={tx.pending} onClick={() => void runAction(resumeRoom)}>Resume requests</button>}<Link className="button secondary" to={`/rooms/${selected.id}`}>View room</Link>{selected.status !== 3 && <button className="button danger" disabled={tx.pending} onClick={() => void runAction(archiveRoom)}>Archive</button>}</div></div>}
-        {selected && !selectedHasKey && selected.status !== 3 && selected.metadata?.creatorRecoveryEnvelope && <div className="selected-room-recovery"><div><strong>Recover this room</strong><p>This version is sealed to your creator recovery identity. The recovered key stays in this browser session only.</p></div>{creatorRecovery ? <button className="button primary" disabled={tx.pending || Boolean(progress)} onClick={() => void runAction(recoverSelectedRoom)}><KeyRound size={17} /> Recover room key</button> : <><label className="field compact-field"><span>Creator recovery passphrase</span><input type="password" value={creatorRecoveryPassphrase} onChange={(event) => setCreatorRecoveryPassphrase(event.target.value)} placeholder="12+ characters" /></label><label className="button secondary file-button"><KeyRound size={17} /> Import creator kit<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void runAction(() => importCreatorRecovery(file)); }} /></label></>}</div>}
+        {selected && !selectedHasKey && selected.status !== 3 && selected.metadata?.creatorRecoveryEnvelope && <div className="selected-room-recovery"><div><strong>Recover this room</strong><p>This version is sealed to your creator recovery identity. The recovered key stays in this browser session only.</p></div>{creatorRecovery ? <button className="button primary" disabled={tx.pending || Boolean(progress)} onClick={() => void runAction(recoverSelectedRoom)}><KeyRound size={17} /> Recover room key</button> : <><label className="field compact-field"><span>Creator recovery passphrase</span><input type="password" value={creatorRecoveryPassphrase} onChange={(event) => setCreatorRecoveryPassphrase(event.target.value)} placeholder="12+ characters" /></label><label className="button secondary file-button"><KeyRound size={17} /> Import creator kit<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void runAction(() => importCreatorKit(file)); }} /></label></>}</div>}
         {selected && !selectedHasKey && selected.status !== 3 && !selected.metadata?.creatorRecoveryEnvelope && <div className="selected-room-recovery"><div><strong>Legacy room recovery</strong><p>This older room predates creator recovery. Restore its original per-room backup or publish the evidence as a new encrypted version.</p></div><label className="field compact-field"><span>Legacy backup passphrase</span><input type="password" value={legacyRecoveryPassphrase} onChange={(event) => setLegacyRecoveryPassphrase(event.target.value)} placeholder="12+ characters" /></label><label className="button secondary file-button"><KeyRound size={17} /> Restore legacy backup<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void runAction(() => importRoomKey(file)); }} /></label><button className="button primary" disabled={documents.length === 0 || !creatorRecovery || tx.pending || Boolean(progress)} onClick={() => void runAction(publishNewVersion)}><RefreshCw size={17} /> Replace as new version</button></div>}
       </section>
       <div className="studio-grid">
@@ -563,13 +465,13 @@ export function StudioPage() {
           <div className="section-title"><UploadCloud /><div><p className="eyebrow">Step 1</p><h2>Add asset evidence</h2></div></div>
           <p>Add evidence covering the asset, ownership or control, and valuation or finances. One comprehensive dossier can cover all three. Files are encrypted before upload.</p>
           <label className="drop-zone"><input type="file" multiple onChange={(event) => chooseFiles(event.target.files)} /><UploadCloud /><strong>Select evidence files</strong><span>Text-based PDF, text, CSV, or JSON.</span></label>
-          <div className="draft-documents">{documents.map((document, index) => <div className="draft-row" key={document.id}><span>{document.file.name}</span><select value={document.type} onChange={(event) => { setSummary(""); setDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value as DraftDocument["type"], required: event.target.value !== "supporting_document" } : item)); }}>{rwaDocumentTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select></div>)}</div>
+          <div className="draft-documents">{documents.map((document, index) => <div className="draft-row" key={document.id}><span>{document.file.name}</span><select value={document.type} onChange={(event) => { setSummary(""); setDocuments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, type: event.target.value as DraftDocument["type"], required: event.target.value !== "supporting_document" } : item)); }}>{rwaDocumentTypes.map((type) => <option key={type} value={type}>{type.replaceAll("_", " ")}</option>)}</select></div>)}{documents.length > 0 && <p className="privacy-note">{evidenceCategoryHint}</p>}</div>
         </section>
         <section className="panel">
           <div className="section-title"><FileKey /><div><p className="eyebrow">Step 2</p><h2>Create the room</h2></div></div>
           <div className={`creator-recovery-card ${creatorRecovery ? "ready" : "missing"}`}>
             <div><span>Creator recovery</span><strong>{creatorRecovery ? "Ready for this session" : requiresExistingCreatorRecovery ? "Import your existing kit" : "One-time setup required"}</strong>{creatorRecovery && <small>{bytesToBase64(creatorRecovery.publicKey).slice(0, 18)}...</small>}</div>
-            {!creatorRecovery && <><label className="field compact-field"><span>Recovery passphrase</span><input type="password" value={creatorRecoveryPassphrase} onChange={(event) => setCreatorRecoveryPassphrase(event.target.value)} placeholder="12+ characters" /></label><div className="recovery-actions">{!requiresExistingCreatorRecovery && <button className="button primary small" disabled={creatorRecoveryPassphrase.length < 12} onClick={() => void runAction(setupCreatorRecovery)}>Create and download kit</button>}<label className="button secondary small file-button">Import existing kit<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void runAction(() => importCreatorRecovery(file)); }} /></label></div></>}
+            {!creatorRecovery && <><label className="field compact-field"><span>Recovery passphrase</span><input type="password" value={creatorRecoveryPassphrase} onChange={(event) => setCreatorRecoveryPassphrase(event.target.value)} placeholder="12+ characters" /></label><div className="recovery-actions">{!requiresExistingCreatorRecovery && <button className="button primary small" disabled={creatorRecoveryPassphrase.length < 12} onClick={() => void runAction(setupIdentity)}>Create and download kit</button>}<label className="button secondary small file-button">Import existing kit<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void runAction(() => importCreatorKit(file)); }} /></label></div></>}
           </div>
           <label className="field"><span>Room title</span><input value={title} onChange={(event) => { setTitle(event.target.value); setSummary(""); }} placeholder="Equipment evidence room" /></label>
           <div className="private-summary-field"><div><span>Public summary</span><small>Generated locally from public labels only</small></div>{summary ? <p>{summary}</p> : <p className="summary-placeholder">Generate a safe marketplace summary after adding a title and evidence.</p>}<button className="button secondary small" disabled={!title.trim() || documents.length === 0} onClick={generatePublicSummary}>{summary ? "Regenerate summary" : "Generate private summary"}</button></div>
@@ -597,7 +499,7 @@ export function StudioPage() {
           {selected && <button className="button secondary wide" disabled={tx.pending || documents.length === 0 || !creatorRecovery} onClick={() => void runAction(publishNewVersion)}><RefreshCw size={17} /> Publish selected files as a new version</button>}
           <label className="field"><span>Creator recovery passphrase</span><input type="password" value={creatorRecoveryPassphrase} onChange={(event) => setCreatorRecoveryPassphrase(event.target.value)} placeholder="Required to export or import the kit" /></label>
           <button className="button secondary wide" disabled={!creatorRecovery || creatorRecoveryPassphrase.length < 12} onClick={() => void runAction(exportCreatorKit)}>Download a fresh creator recovery kit</button>
-          <label className="button secondary wide file-button"><KeyRound size={17} /> Import creator recovery kit<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void runAction(() => importCreatorRecovery(file)); }} /></label>
+          <label className="button secondary wide file-button"><KeyRound size={17} /> Import creator recovery kit<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void runAction(() => importCreatorKit(file)); }} /></label>
           <details className="legacy-recovery"><summary>Legacy per-room backup</summary><p>Only use this for rooms created before creator recovery was introduced.</p><label className="field"><span>Legacy backup passphrase</span><input type="password" value={legacyRecoveryPassphrase} onChange={(event) => setLegacyRecoveryPassphrase(event.target.value)} /></label><button className="button secondary wide" disabled={!selected} onClick={() => void runAction(exportKey)}>Export legacy room backup</button><label className="button secondary wide file-button"><KeyRound size={17} /> Restore legacy room backup<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void runAction(() => importRoomKey(file)); }} /></label></details>
         </div>
       </details>

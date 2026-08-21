@@ -5,6 +5,7 @@ import { DirectoryPage } from "./pages/DirectoryPage";
 import { EvidencePage } from "./pages/EvidencePage";
 import { HomePage } from "./pages/HomePage";
 import { RoomPage } from "./pages/RoomPage";
+import { SecurityPage } from "./pages/SecurityPage";
 import { StudioPage } from "./pages/StudioPage";
 
 export function App() {
@@ -17,6 +18,7 @@ export function App() {
         <Route path="/studio" element={<StudioPage />} />
         <Route path="/access" element={<AccessPage />} />
         <Route path="/evidence" element={<EvidencePage />} />
+        <Route path="/security" element={<SecurityPage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>
     </Layout>

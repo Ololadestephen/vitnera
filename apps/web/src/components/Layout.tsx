@@ -7,6 +7,7 @@ const nav = [
   ["Explore", "/rooms"],
   ["My access", "/access"],
   ["Workspace", "/studio"],
+  ["Security", "/security"],
   ["Technical proof", "/evidence"],
 ] as const;
 
@@ -65,6 +66,7 @@ export function Layout({ children }: PropsWithChildren) {
             <div className="footer-column">
               <strong>Resources</strong>
               <NavLink to="/evidence">Technical proof</NavLink>
+              <NavLink to="/security">Security model</NavLink>
               <a href="https://github.com/Ololadestephen/vitnera" target="_blank" rel="noreferrer">GitHub</a>
               <a href="https://scan.botchain.ai" target="_blank" rel="noreferrer">BOT Chain explorer</a>
             </div>
