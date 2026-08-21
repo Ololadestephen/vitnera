@@ -6,7 +6,7 @@ Vitnera gives issuers a controlled way to publish encrypted asset evidence, obta
 
 The product is designed for asset owners, fund operators, brokers, lenders, and professional investors who need verifiable diligence workflows without turning sensitive documents into public blockchain data.
 
-> **Current release:** BOT Chain testnet beta. The complete issuer-to-investor workflow is implemented and tested. Optional ERC-3643 investor gating is covered by contract tests and integrated into the production frontend build, but requires a fresh contract deployment before it is available in the hosted product. The contract has not completed an independent production security audit.
+> **Current release:** BOT Chain mainnet. The complete issuer-to-investor workflow and optional ERC-3643 investor gating are deployed in the current contract. The contract has not completed an independent production security audit.
 
 ## Product
 
@@ -207,16 +207,16 @@ Revocation prevents future application access and future-version delivery. It ca
 | --- | --- |
 | Chain ID | `968` |
 | RPC | `https://rpc.bohr.life` |
-| Contract | [`0xc6a92F7E7BdDB2ca149518aE408006031808F117`](https://scan.bohr.life/address/0xc6a92F7E7BdDB2ca149518aE408006031808F117?tab=contract) |
-| Deployment block | `20642802` |
-| Deployment transaction | [`0xeac28b06...9505e41`](https://scan.bohr.life/tx/0xeac28b06ce0013741df52513e385bc7b9e408ac13233b2eb44de633ff9505e41) |
+| Contract | [`0x962E97F8e292A94E0a04Ad2eeFB4dc3097308240`](https://scan.botchain.ai/address/0x962E97F8e292A94E0a04Ad2eeFB4dc3097308240?tab=contract) |
+| Deployment block | `20487729` |
+| Deployment transaction | [`0x42cf1fce...90f9ab86`](https://scan.botchain.ai/tx/0x42cf1fce6ecf8629e7ba4d9b3f4af0e356e9fcb371b6eb67c8c9843f90f9ab86) |
 | EIP-712 domain | `Vitnera RWA`, version `1` |
 | Supported template | `rwa-basic-v1` |
 | Review policy | Version `1` |
 
 The initial `rwa-basic-v1` template supports equipment, real estate, commodities, receivables, and other assets. It expects three evidence roles: asset overview, ownership or control evidence, and valuation or financial evidence.
 
-The deployment above predates the optional ERC-3643 room field. Deploy the current contract source and update the frontend contract address and deployment block before testing regulated rooms.
+The deployment above includes optional ERC-3643-linked rooms with live investor verification at deposit and approval time.
 
 ## ERC-3643 Reference Integration
 

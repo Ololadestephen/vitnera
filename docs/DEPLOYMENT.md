@@ -38,15 +38,15 @@ jq -e '.settings.viaIR == true and .settings.optimizer.runs == 20000' \
 
 Submit that file with Solidity `0.8.24`, optimization enabled for `20,000` runs, `viaIR` enabled, and the ABI-encoded initial-owner constructor argument. Do not reuse verification input from an older contract revision.
 
-Current BOT Chain testnet deployment:
+Current BOT Chain mainnet deployment:
 
 ```env
-VITNERA_CONTRACT=0xc6a92F7E7BdDB2ca149518aE408006031808F117
-VITE_VITNERA_CONTRACT=0xc6a92F7E7BdDB2ca149518aE408006031808F117
-VITE_DEPLOYMENT_BLOCK=20642802
+VITNERA_CONTRACT=0x962E97F8e292A94E0a04Ad2eeFB4dc3097308240
+VITE_VITNERA_CONTRACT=0x962E97F8e292A94E0a04Ad2eeFB4dc3097308240
+VITE_DEPLOYMENT_BLOCK=20487729
 ```
 
-Deployment transaction: [`0xeac28b06…9505e41`](https://scan.bohr.life/tx/0xeac28b06ce0013741df52513e385bc7b9e408ac13233b2eb44de633ff9505e41).
+Deployment transaction: [`0x42cf1fce…90f9ab86`](https://scan.botchain.ai/tx/0x42cf1fce6ecf8629e7ba4d9b3f4af0e356e9fcb371b6eb67c8c9843f90f9ab86).
 
 ## 2. Reviewer
 
