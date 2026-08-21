@@ -17,7 +17,7 @@
     "@vercel/analytics": "^2.0.1",
     "@vitnera/core": "0.1.0",
     "lucide-react": "^0.468.0",
-    "pdfjs-dist": "^5.3.93",
+    "pdfjs-dist": "5.5.207",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.7.1",
