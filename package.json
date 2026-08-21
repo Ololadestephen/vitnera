@@ -15,6 +15,7 @@
     "test:contracts": "npm run setup:contracts && cd contracts && forge test --offline -vv",
     "lint:contracts": "cd contracts && forge fmt --check",
     "dev": "npm run dev -w @vitnera/web",
+    "dev:clean": "npm run dev:clean -w @vitnera/web",
     "dev:reviewer": "npm run dev -w @vitnera/reviewer"
   }
 }

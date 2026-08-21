@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [react()],
     envDir: "../..",
+    // Keep one deterministic optimizer cache outside the workspace package.
+    cacheDir: "../../node_modules/.vite/vitnera-web",
     server: {
       port: 5174,
       proxy: {
