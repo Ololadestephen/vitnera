@@ -11,6 +11,58 @@ import {
   WalletCards,
 } from "lucide-react";
 import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+
+const consoleQueries = [
+  "Solar portfolio · Room 08",
+  "Equipment lease · Room 14",
+  "Receivables pool · Room 21",
+];
+const registerQueries = [
+  "Search private rooms...",
+  "Northbank Solar Portfolio",
+  "Ownership evidence · sealed",
+];
+
+function useTypewriter(phrases: string[]) {
+  const [text, setText] = useState("");
+  useEffect(() => {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setText(phrases[0]);
+      return;
+    }
+    let phrase = 0;
+    let char = 0;
+    let deleting = false;
+    let timer: number;
+    const tick = () => {
+      const current = phrases[phrase];
+      if (!deleting) {
+        char += 1;
+        setText(current.slice(0, char));
+        if (char === current.length) {
+          deleting = true;
+          timer = window.setTimeout(tick, 2400);
+          return;
+        }
+        timer = window.setTimeout(tick, 55 + Math.random() * 65);
+        return;
+      }
+      char -= 1;
+      setText(current.slice(0, char));
+      if (char === 0) {
+        deleting = false;
+        phrase = (phrase + 1) % phrases.length;
+        timer = window.setTimeout(tick, 520);
+        return;
+      }
+      timer = window.setTimeout(tick, 26);
+    };
+    timer = window.setTimeout(tick, 700);
+    return () => window.clearTimeout(timer);
+  }, [phrases]);
+  return text;
+}
 
 const lifecycle = [
   {
@@ -40,6 +92,8 @@ const lifecycle = [
 ];
 
 export function HomePage() {
+  const consoleText = useTypewriter(consoleQueries);
+  const registerText = useTypewriter(registerQueries);
   return (
     <div className="home-page landing-page page-enter">
       <section className="landing-hero">
@@ -67,7 +121,7 @@ export function HomePage() {
               <div><ShieldCheck size={18} /><strong>Evidence workspace</strong></div>
               <span>private by default</span>
             </div>
-            <div className="console-search"><Search size={20} /><span>Solar portfolio · Room 08</span><kbd>esc</kbd></div>
+            <div className="console-search"><Search size={20} /><span>{consoleText}<span className="type-caret" /></span><kbd>esc</kbd></div>
             <div className="console-tabs">
               <button className="active"><FileKey2 size={18} /> Evidence</button>
               <button><Bot size={18} /> Review</button>
@@ -151,7 +205,7 @@ export function HomePage() {
               <small>Draft</small>
             </aside>
             <div className="register-content">
-              <div className="register-search"><Search size={19} /><span>Search private rooms...</span></div>
+              <div className="register-search"><Search size={19} /><span>{registerText}<span className="type-caret" /></span></div>
               <div className="register-room selected">
                 <ShieldCheck /><div><strong>Northbank Solar Portfolio</strong><span>6 files · Review ready</span></div><small>0.50 BOT</small>
               </div>

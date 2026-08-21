@@ -170,6 +170,9 @@ main { min-height: calc(100vh - 190px); }
 @media (max-width: 700px) { .signed-review-state { grid-template-columns: 1fr; }.signed-review-state div { border-right: 0; border-bottom: 1px solid var(--line); } }
 
 /* Security page */
+.type-caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 3px; vertical-align: -0.18em; background: var(--teal); animation: caret-blink 1.05s steps(2, start) infinite; }
+@keyframes caret-blink { to { visibility: hidden; } }
+
 .security-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 20px; margin-bottom: 20px; }
 .security-stage { position: relative; }
 .security-icon { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 12px; background: color-mix(in srgb, var(--teal) 9%, var(--paper-solid)); color: var(--teal); margin-bottom: 6px; }

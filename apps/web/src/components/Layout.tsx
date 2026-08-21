@@ -42,8 +42,12 @@ export function Layout({ children }: PropsWithChildren) {
               {label}
             </NavLink>
           ))}
-          <button className="theme-button" onClick={() => setDark(!dark)}>
-            {dark ? <Sun size={16} /> : <Moon size={16} />} {dark ? "Light" : "Dark"}
+          <button
+            className="theme-button"
+            aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+            onClick={() => setDark(!dark)}
+          >
+            {dark ? <Sun size={16} /> : <Moon size={16} />}
           </button>
           <WalletButton />
         </nav>
