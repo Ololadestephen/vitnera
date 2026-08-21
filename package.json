@@ -8,6 +8,14 @@
     "packages/*",
     "services/*"
   ],
+  "overrides": {
+    "@coinbase/cdp-sdk": {
+      "axios": "1.19.0"
+    },
+    "viem@2.23.2": {
+      "ws": "8.21.3"
+    }
+  },
   "scripts": {
     "setup:contracts": "sh contracts/install-deps.sh",
     "build": "npm run build -w @vitnera/core && npm run build -w @vitnera/reviewer && npm run build -w @vitnera/web",

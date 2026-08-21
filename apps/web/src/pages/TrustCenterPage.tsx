@@ -7,6 +7,16 @@ import { appConfig, explorerTx, requireContract } from "../lib/config";
 
 const eventNames = ["DataRoomCreated", "AIReviewRecorded", "VerifierAttestationRecorded", "DataRoomActivated", "AccessRequested", "AccessApproved", "AccessRejected", "RequestRefunded", "EarningsWithdrawn"] as const;
 
+type EvidenceEvent = {
+  eventName: string;
+  transactionHash: `0x${string}`;
+  blockNumber: bigint;
+};
+
+type EvidenceData =
+  | { mode: "events"; events: EvidenceEvent[] }
+  | { mode: "state"; blockNumber: bigint; roomCount: bigint; reviewCount: bigint; requestCount: bigint };
+
 const stages = [
   {
     icon: <FolderLock size={20} />,
@@ -61,11 +71,37 @@ export function TrustCenterPage() {
   const client = usePublicClient();
   const evidence = useQuery({
     queryKey: ["rwa-evidence", client?.chain.id], enabled: Boolean(client),
-    queryFn: async () => {
-      const batches = await Promise.all(eventNames.map((eventName) => client!.getContractEvents({ address: requireContract(), abi: vitneraAbi, eventName, fromBlock: appConfig.deploymentBlock, toBlock: "latest" })));
-      return batches.flat().sort((a, b) => Number((b.blockNumber ?? 0n) - (a.blockNumber ?? 0n)));
+    queryFn: async (): Promise<EvidenceData> => {
+      if (appConfig.eventLogsSupported) {
+        try {
+          const batches = await Promise.all(eventNames.map((eventName) => client!.getContractEvents({ address: requireContract(), abi: vitneraAbi, eventName, fromBlock: appConfig.deploymentBlock, toBlock: "latest" })));
+          const events = batches.flatMap((batch) => batch.flatMap((event) => (
+            event.transactionHash && event.blockNumber
+              ? [{ eventName: event.eventName, transactionHash: event.transactionHash, blockNumber: event.blockNumber }]
+              : []
+          ))).sort((a, b) => Number(b.blockNumber - a.blockNumber));
+          return { mode: "events", events };
+        } catch {
+          // The public BOT mainnet RPC does not expose historical event logs.
+        }
+      }
+
+      const contract = requireContract();
+      const [roomCount, reviewCount, requestCount, blockNumber] = await Promise.all([
+        client!.readContract({ address: contract, abi: vitneraAbi, functionName: "roomCount" }),
+        client!.readContract({ address: contract, abi: vitneraAbi, functionName: "reviewCount" }),
+        client!.readContract({ address: contract, abi: vitneraAbi, functionName: "requestCount" }),
+        client!.getBlockNumber(),
+      ]);
+      return { mode: "state", roomCount, reviewCount, requestCount, blockNumber };
     },
   });
+
+  const stateRows = evidence.data?.mode === "state" ? [
+    ["Data rooms", evidence.data.roomCount],
+    ["AI reviews", evidence.data.reviewCount],
+    ["Access requests", evidence.data.requestCount],
+  ] as const : [];
 
   return (
     <div className="page page-enter">
@@ -114,11 +150,17 @@ export function TrustCenterPage() {
       </section>
 
       <section className="panel evidence-list trust-ledger">
-        <div className="section-title"><Fingerprint /><div><p className="eyebrow">On-chain evidence</p><h2>Live contract events</h2></div></div>
-        <p className="trust-ledger-note">Read directly from BOT Chain. No private files or room keys appear here.</p>
-        {evidence.isLoading && <Busy label="Reading contract events" />}
-        {evidence.data?.map((event, index) => <a key={`${event.transactionHash}-${index}`} href={explorerTx(event.transactionHash)} target="_blank" rel="noreferrer" className="evidence-row"><Fingerprint /><div><strong>{event.eventName}</strong><span>Block {event.blockNumber?.toString()} · {event.transactionHash.slice(0, 12)}...{event.transactionHash.slice(-8)}</span></div><ExternalLink /></a>)}
-        {!evidence.isLoading && evidence.data?.length === 0 && <div className="empty-state">No contract evidence yet.</div>}
+        <div className="section-title"><Fingerprint /><div><p className="eyebrow">On-chain evidence</p><h2>{evidence.data?.mode === "state" ? "Live contract state" : "Live contract events"}</h2></div></div>
+        <p className="trust-ledger-note">
+          {evidence.data?.mode === "state"
+            ? `Read directly at BOT Chain block ${evidence.data.blockNumber.toString()}. This RPC does not expose historical logs, so Vitnera shows current contract counters instead of inventing an event history.`
+            : "Read directly from BOT Chain. No private files or room keys appear here."}
+        </p>
+        {evidence.isLoading && <Busy label="Reading on-chain evidence" />}
+        {evidence.isError && <div className="empty-state">On-chain evidence is temporarily unavailable. Try another BOT Chain RPC.</div>}
+        {evidence.data?.mode === "events" && evidence.data.events.map((event, index) => <a key={`${event.transactionHash}-${index}`} href={explorerTx(event.transactionHash)} target="_blank" rel="noreferrer" className="evidence-row"><Fingerprint /><div><strong>{event.eventName}</strong><span>Block {event.blockNumber.toString()} · {event.transactionHash.slice(0, 12)}...{event.transactionHash.slice(-8)}</span></div><ExternalLink /></a>)}
+        {stateRows.map(([label, value]) => <div className="evidence-row" key={label}><Fingerprint /><div><strong>{label}</strong><span>{value.toString()} recorded on the current contract</span></div></div>)}
+        {!evidence.isLoading && evidence.data?.mode === "events" && evidence.data.events.length === 0 && <div className="empty-state">No contract evidence yet.</div>}
       </section>
     </div>
   );

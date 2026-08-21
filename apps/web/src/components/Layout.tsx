@@ -1,6 +1,7 @@
 import { Menu, Moon, Sun, X } from "lucide-react";
 import { useEffect, useState, type PropsWithChildren } from "react";
 import { NavLink, useLocation } from "react-router-dom";
+import { appConfig, explorerAddress } from "../lib/config";
 import { WalletButton } from "./WalletButton";
 
 const nav = [
@@ -74,9 +75,9 @@ export function Layout({ children }: PropsWithChildren) {
             </div>
             <div className="footer-column">
               <strong>Protocol</strong>
-              <a href="https://scan.botchain.ai/address/0xc6a92F7E7BdDB2ca149518aE408006031808F117" target="_blank" rel="noreferrer">Verified contract</a>
+              {appConfig.contract && <a href={explorerAddress(appConfig.contract)} target="_blank" rel="noreferrer">Contract deployment</a>}
               <NavLink to="/trust">Evidence ledger</NavLink>
-              <NavLink to="/rooms">Live testnet</NavLink>
+              <NavLink to="/rooms">{appConfig.chainId === 677 ? "BOT Chain mainnet" : "Live testnet"}</NavLink>
             </div>
           </div>
         </div>

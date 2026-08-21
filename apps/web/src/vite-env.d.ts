@@ -7,4 +7,5 @@ interface ImportMetaEnv {
   readonly VITE_STORAGE_API_URL?: string;
   readonly VITE_REVIEWER_API_URL?: string;
   readonly VITE_DEPLOYMENT_BLOCK?: string;
+  readonly VITE_EVENT_LOGS_SUPPORTED?: string;
 }

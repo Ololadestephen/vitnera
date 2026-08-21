@@ -7,6 +7,7 @@ import { publicRoomMetadataSchema, type ChainRequest, type ChainRoom, type Publi
 
 type RoomResult = Omit<ChainRoom, "id" | "metadata" | "metadataVerified">;
 type RequestResult = Omit<ChainRequest, "id">;
+const requestReadBatchSize = 25;
 
 export async function loadRooms(client: PublicClient): Promise<ChainRoom[]> {
   const contract = requireContract();
@@ -43,26 +44,78 @@ export async function loadRequest(client: PublicClient, id: bigint): Promise<Cha
   return { id, ...result, status: Number(result.status) };
 }
 
-export async function loadInvestorRequests(client: PublicClient, investor: `0x${string}`): Promise<ChainRequest[]> {
-  const logs = await client.getContractEvents({
+async function loadAllRequests(client: PublicClient): Promise<ChainRequest[]> {
+  const count = await client.readContract({
     address: requireContract(),
     abi: vitneraAbi,
-    eventName: "AccessRequested",
-    args: { investor },
-    fromBlock: appConfig.deploymentBlock,
-    toBlock: "latest",
+    functionName: "requestCount",
   });
-  return Promise.all(logs.map((log) => loadRequest(client, log.args.requestId!)));
+  const requests: ChainRequest[] = [];
+
+  for (let start = 1; start <= Number(count); start += requestReadBatchSize) {
+    const end = Math.min(Number(count), start + requestReadBatchSize - 1);
+    const ids = Array.from({ length: end - start + 1 }, (_, index) => BigInt(start + index));
+    requests.push(...await Promise.all(ids.map((id) => loadRequest(client, id))));
+  }
+
+  return requests;
+}
+
+function newestRequestFirst(a: ChainRequest, b: ChainRequest): number {
+  return a.id === b.id ? 0 : a.id > b.id ? -1 : 1;
+}
+
+async function loadInvestorRequestsFromState(client: PublicClient, investor: `0x${string}`): Promise<ChainRequest[]> {
+  const normalizedInvestor = investor.toLowerCase();
+  return (await loadAllRequests(client))
+    .filter((request) => request.investor.toLowerCase() === normalizedInvestor)
+    .sort(newestRequestFirst);
+}
+
+async function loadRoomRequestsFromState(client: PublicClient, roomId: bigint): Promise<ChainRequest[]> {
+  return (await loadAllRequests(client))
+    .filter((request) => request.roomId === roomId)
+    .sort(newestRequestFirst);
+}
+
+export async function loadInvestorRequests(client: PublicClient, investor: `0x${string}`): Promise<ChainRequest[]> {
+  if (appConfig.eventLogsSupported) {
+    try {
+      const logs = await client.getContractEvents({
+        address: requireContract(),
+        abi: vitneraAbi,
+        eventName: "AccessRequested",
+        args: { investor },
+        fromBlock: appConfig.deploymentBlock,
+        toBlock: "latest",
+      });
+      return (await Promise.all(logs.map((log) => loadRequest(client, log.args.requestId!))))
+        .sort(newestRequestFirst);
+    } catch {
+      // Some BOT Chain RPC endpoints intentionally disable eth_getLogs.
+    }
+  }
+
+  return loadInvestorRequestsFromState(client, investor);
 }
 
 export async function loadRoomRequests(client: PublicClient, roomId: bigint): Promise<ChainRequest[]> {
-  const logs = await client.getContractEvents({
-    address: requireContract(),
-    abi: vitneraAbi,
-    eventName: "AccessRequested",
-    args: { roomId },
-    fromBlock: appConfig.deploymentBlock,
-    toBlock: "latest",
-  });
-  return Promise.all(logs.map((log) => loadRequest(client, log.args.requestId!)));
+  if (appConfig.eventLogsSupported) {
+    try {
+      const logs = await client.getContractEvents({
+        address: requireContract(),
+        abi: vitneraAbi,
+        eventName: "AccessRequested",
+        args: { roomId },
+        fromBlock: appConfig.deploymentBlock,
+        toBlock: "latest",
+      });
+      return (await Promise.all(logs.map((log) => loadRequest(client, log.args.requestId!))))
+        .sort(newestRequestFirst);
+    } catch {
+      // Fall back to enumerable contract state when event history is unavailable.
+    }
+  }
+
+  return loadRoomRequestsFromState(client, roomId);
 }

@@ -6,7 +6,7 @@ Vitnera gives issuers a controlled way to publish encrypted asset evidence, obta
 
 The product is designed for asset owners, fund operators, brokers, lenders, and professional investors who need verifiable diligence workflows without turning sensitive documents into public blockchain data.
 
-> **Current release:** BOT Chain testnet beta. The complete issuer-to-investor workflow is implemented and tested. The contract has not completed an independent production security audit.
+> **Current release:** BOT Chain testnet beta. The complete issuer-to-investor workflow is implemented and tested. Optional ERC-3643 investor gating is covered by contract tests and integrated into the production frontend build, but requires a fresh contract deployment before it is available in the hosted product. The contract has not completed an independent production security audit.
 
 ## Product
 
@@ -21,7 +21,39 @@ Traditional data rooms rely on a central operator to control files, approve acce
 | Wallet-bound delivery | Approved room keys are sealed to an investor's X25519 public key. |
 | Local decryption | Approved investors verify hashes and decrypt ciphertext in their browser. |
 | Versioned evidence | Document changes rotate the room key and invalidate stale reviews and acknowledgements. |
-| Verifiable operations | Room, review, access, refund, withdrawal, pause, and archive events are available through the public evidence ledger. |
+| Regulated-room eligibility | An issuer can link a room to an ERC-3643 token and require the token's live Identity Registry to verify an investor before payment and again before key release. |
+| Verifiable operations | Room, review, access, refund, withdrawal, pause, and archive state is independently readable from BOT Chain. Event history is shown when the configured RPC supports logs. |
+
+## Built with BOT Chain
+
+Vitnera uses BOT Chain as the settlement and regulated-asset coordination layer. The ERC-3643 integration follows the interfaces and eligibility semantics published in the official [BOT Chain RWA developer documentation](https://dev-docs.bohr.life/docs/RWA/project-rwa-developer-docs/).
+
+### Infrastructure and standards supplied by the BOT Chain ecosystem
+
+| BOT Chain resource | How Vitnera uses it |
+| --- | --- |
+| BOT Chain EVM | Executes `VitneraRWA.sol`, stores room and access state, verifies EIP-712 attestations, and settles BOT escrow. |
+| Native BOT token | Funds exact-price investor deposits, issuer earnings, refunds, and transaction fees. |
+| ERC-3643 / T-REX interfaces | Gives regulated rooms a standard link to a tokenized asset and its identity infrastructure. |
+| Token `identityRegistry()` | Resolves the current Identity Registry from the linked token for every security decision. |
+| Identity Registry `isVerified(address)` | Supplies the authoritative investor-eligibility result used before accepting a deposit and again before releasing a key envelope. |
+| BOT RPC and explorer | Provide chain reads, wallet transactions, event evidence, and public transaction links. |
+| BOT PRWA capability-demo suite | Provides an official reference ERC-3643 deployment that Vitnera can link read-only for integration demonstrations. |
+
+### Functionality built by Vitnera
+
+BOT Chain does not receive plaintext files or room keys. Vitnera adds the confidential evidence layer around the chain infrastructure:
+
+- local AES-256-GCM document encryption and per-version key rotation;
+- IPFS ciphertext manifests, document roots, and integrity verification;
+- consent-based structured AI review with root-bound EIP-712 attestations;
+- issuer-controlled publication and on-chain acknowledgement of non-ready findings;
+- exact-price escrow, pull refunds, pull earnings, and request lifecycle controls;
+- wallet-bound X25519 key envelopes and browser-only decryption;
+- optional ERC-3643 room gating with live registry resolution and TOCTOU-safe re-verification;
+- product UI for issuers, investors, regulated-asset status, and public evidence.
+
+Vitnera treats a successful `identityRegistry()` call as interface compatibility, not proof that a token or registry is legitimate. Token name, symbol, compliance address, and pause status are best-effort display data. Only `isVerified(address)` controls regulated-room eligibility.
 
 ## Product Surfaces
 
@@ -29,7 +61,7 @@ Traditional data rooms rely on a central operator to control files, approve acce
 - **Issuer Workspace** creates rooms, encrypts and uploads evidence, runs reviews, publishes room versions, handles requests, and withdraws earnings.
 - **Room Details** explains the current evidence version, review outcome, commercial terms, and access state.
 - **My Access** manages investor requests, refunds, encrypted key envelopes, and local document decryption.
-- **Technical Proof** reads protocol events directly from BOT Chain and links each operation to the explorer.
+- **Technical Proof** reads protocol events when the RPC supports logs and otherwise presents a clearly labeled live contract-state snapshot.
 
 ## Lifecycle
 
@@ -55,11 +87,11 @@ A `ReviewReady` room can be activated normally. `NeedsReview` and `Incomplete` r
 
 ### 4. Request access and settle payment
 
-An investor generates an X25519 key pair locally and requests access with the public key. The contract accepts only the room's exact access price and holds the BOT deposit in escrow.
+An investor generates an X25519 key pair locally and requests access with the public key. The contract accepts only the room's exact access price and holds the BOT deposit in escrow. For an ERC-3643-linked room, the contract resolves the token's current Identity Registry and requires `isVerified(investor)` before accepting payment.
 
 ### 5. Approve and decrypt
 
-The issuer approves the request and seals the current room key to the investor public key. The encrypted envelope is uploaded, and its URI and hash are committed on-chain. The investor verifies the envelope and ciphertext hashes before decrypting the approved room version locally.
+The issuer approves the request and seals the current room key to the investor public key. For a regulated room, eligibility is checked again at approval so a verification change between deposit and key release cannot bypass policy. The encrypted envelope is uploaded, and its URI and hash are committed on-chain. The investor verifies the envelope and ciphertext hashes before decrypting the approved room version locally.
 
 ### 6. Refund or withdraw
 
@@ -75,6 +107,8 @@ flowchart LR
     Storage["IPFS / Pinata"]
     Reviewer["Structured AI reviewer"]
     Contract["VitneraRWA.sol"]
+    Token["ERC-3643 token"]
+    Registry["Identity Registry"]
     Chain["BOT Chain"]
 
     Issuer -->|"Encrypt evidence locally"| Web
@@ -87,6 +121,9 @@ flowchart LR
     Web -->|"Record review and publication decision"| Contract
 
     Investor -->|"Deposit BOT and register public key"| Contract
+    Contract -->|"Resolve identityRegistry()"| Token
+    Contract -->|"Check isVerified(investor)"| Registry
+    Token -->|"Current registry"| Registry
     Issuer -->|"Approve or reject request"| Web
     Web -->|"Record wallet-bound envelope"| Contract
     Investor -->|"Fetch verified ciphertext"| Storage
@@ -114,6 +151,9 @@ flowchart LR
 - replay protection through signer nonces;
 - review and attestation expiry;
 - exact access payment from contract state, never a client-selected amount;
+- optional, creation-time ERC-3643 token linkage that is immutable for the room;
+- live Identity Registry resolution and `isVerified` enforcement before deposit and key release;
+- fail-closed regulated-token and registry calls, while rejection remains available so escrow cannot be trapped by lost eligibility;
 - escrow accounting, pull-based earnings, and pull-based refunds;
 - fresh key commitments for every document update;
 - explicit approval, rejection, expiry, revocation, pause, and archive transitions;
@@ -131,6 +171,7 @@ AI cannot publish a room, move escrowed funds, issue a key envelope, or approve 
 - template, terms hash, access price, and room status;
 - review status, signer, hashes, policy version, and expiry;
 - investor encryption public key, payment amount, request state, and encrypted-envelope reference;
+- optional linked ERC-3643 token address and the registry snapshot emitted when the room was created;
 - protocol events and accounting totals.
 
 ### Encrypted in storage
@@ -166,14 +207,29 @@ Revocation prevents future application access and future-version delivery. It ca
 | --- | --- |
 | Chain ID | `968` |
 | RPC | `https://rpc.bohr.life` |
-| Contract | [`0xc6a92F7E7BdDB2ca149518aE408006031808F117`](https://scan.botchain.ai/address/0xc6a92F7E7BdDB2ca149518aE408006031808F117) |
+| Contract | [`0xc6a92F7E7BdDB2ca149518aE408006031808F117`](https://scan.bohr.life/address/0xc6a92F7E7BdDB2ca149518aE408006031808F117?tab=contract) |
 | Deployment block | `20642802` |
-| Deployment transaction | [`0xeac28b06...9505e41`](https://scan.botchain.ai/tx/0xeac28b06ce0013741df52513e385bc7b9e408ac13233b2eb44de633ff9505e41) |
+| Deployment transaction | [`0xeac28b06...9505e41`](https://scan.bohr.life/tx/0xeac28b06ce0013741df52513e385bc7b9e408ac13233b2eb44de633ff9505e41) |
 | EIP-712 domain | `Vitnera RWA`, version `1` |
 | Supported template | `rwa-basic-v1` |
 | Review policy | Version `1` |
 
 The initial `rwa-basic-v1` template supports equipment, real estate, commodities, receivables, and other assets. It expects three evidence roles: asset overview, ownership or control evidence, and valuation or financial evidence.
+
+The deployment above predates the optional ERC-3643 room field. Deploy the current contract source and update the frontend contract address and deployment block before testing regulated rooms.
+
+## ERC-3643 Reference Integration
+
+Vitnera can link any compatible token whose `identityRegistry()` call returns a nonzero address. For demonstration, BOT Chain publishes a PRWA capability-demo suite.
+
+| Network | Component | Address |
+| --- | --- | --- |
+| BOT Chain mainnet | PRWA token | [`0x9115A020821fDFdf265Eea8788a500d17557c370`](https://scan.botchain.ai/address/0x9115A020821fDFdf265Eea8788a500d17557c370) |
+| BOT Chain mainnet | Identity Registry | [`0x7752dd107CDec2dF5feD585BCC70457c5312021a`](https://scan.botchain.ai/address/0x7752dd107CDec2dF5feD585BCC70457c5312021a) |
+| BOT Chain testnet | PRWA token | [`0x922835859623d6F3b99a2742D585E093bBA0a740`](https://scan.bohr.life/address/0x922835859623d6F3b99a2742D585E093bBA0a740) |
+| BOT Chain testnet | Identity Registry | [`0x17e33C394Ab783D6786011d01681D8Ad540C5F53`](https://scan.bohr.life/address/0x17e33C394Ab783D6786011d01681D8Ad540C5F53) |
+
+The mainnet PRWA deployment is presented by BOT Chain as a capability demo. Linking it proves technical interoperability; it is not evidence of ownership, valuation, legal rights, or regulatory approval. Vitnera resolves the registry live for enforcement. The `RegulatedAssetLinked` event records the registry observed at room creation only as an audit snapshot.
 
 ## Repository
 
@@ -230,18 +286,19 @@ Only variables prefixed with `VITE_` are exposed to the browser. Private keys an
 
 ```env
 # Contract deployment and server processes
-BOTCHAIN_RPC_URL=https://rpc.bohr.life
-BOTCHAIN_CHAIN_ID=968
-VITNERA_CONTRACT=0xc6a92F7E7BdDB2ca149518aE408006031808F117
+BOTCHAIN_RPC_URL=https://rpc.botchain.ai
+BOTCHAIN_CHAIN_ID=677
+VITNERA_CONTRACT=
 DEPLOYER_PRIVATE_KEY=
 REVIEWER_ADDRESS=
 VERIFIER_ADDRESS=
 
 # Web application
-VITE_BOTCHAIN_RPC_URL=https://rpc.bohr.life
-VITE_BOTCHAIN_CHAIN_ID=968
-VITE_VITNERA_CONTRACT=0xc6a92F7E7BdDB2ca149518aE408006031808F117
-VITE_DEPLOYMENT_BLOCK=20642802
+VITE_BOTCHAIN_RPC_URL=https://rpc.botchain.ai
+VITE_BOTCHAIN_CHAIN_ID=677
+VITE_VITNERA_CONTRACT=
+VITE_DEPLOYMENT_BLOCK=0
+VITE_EVENT_LOGS_SUPPORTED=false
 VITE_STORAGE_API_URL=http://localhost:8787
 VITE_REVIEWER_API_URL=http://localhost:8790
 
@@ -255,7 +312,9 @@ REVIEWER_PORT=8790
 REVIEWER_ALLOWED_ORIGINS=http://localhost:5174
 ```
 
-The address derived from `REVIEWER_PRIVATE_KEY` must be authorized by the contract and match the expected reviewer identity in the deployed environment. The deployer and reviewer should use separate keys.
+The address derived from `REVIEWER_PRIVATE_KEY` must be authorized by the contract and match the expected reviewer identity in the deployed environment. The deployer and reviewer should use separate keys. Set the deployed contract address and block after deployment; leaving them blank prevents the application from silently using a contract from another network.
+
+BOT Chain's public mainnet RPC supports contract reads and transactions but does not expose `eth_getLogs`. Vitnera detects that endpoint and enumerates requests through `requestCount()` and `getAccessRequest()`, while Technical Proof displays direct room/review/request counters. With a log-capable RPC or indexer, set `VITE_EVENT_LOGS_SUPPORTED=true` to restore the historical event ledger.
 
 ## Service Interfaces
 
@@ -286,7 +345,8 @@ npm run lint:contracts
 The current suite covers:
 
 - 17 Foundry tests for room lifecycle, issuer overrides, exact-payment fuzzing, replay protection, access control, version/key rotation, refunds, and escrow accounting;
-- 8 core tests for cryptography, recovery, canonical hashing, summaries, and manifests;
+- 10 Foundry tests for optional ERC-3643 rooms, invalid-token rejection, live registry changes, verified and unverified investors, approval-time re-verification, refunds, immutability, and accounting;
+- 10 core tests for cryptography, recovery, canonical hashing, summaries, and manifests;
 - 7 reviewer tests for schema validation, policy evaluation, and EIP-712 signing;
 - TypeScript compilation and a production Vite build.
 

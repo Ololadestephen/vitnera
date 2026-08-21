@@ -145,7 +145,15 @@ contract VitneraRegulatedRoomTest is Test {
         vm.prank(issuer);
         vm.expectRevert(VitneraRWA.InvalidRegulatedToken.selector);
         rwa.createDataRoom(
-            keccak256("m"), "ipfs://m", ROOT_V1, KEY_V1, keccak256("t"), RWA_BASIC_TEMPLATE, PRICE, 2 days, eoa
+            keccak256("m"),
+            "ipfs://m",
+            ROOT_V1,
+            KEY_V1,
+            keccak256("t"),
+            RWA_BASIC_TEMPLATE,
+            PRICE,
+            2 days,
+            eoa
         );
 
         vm.prank(issuer);

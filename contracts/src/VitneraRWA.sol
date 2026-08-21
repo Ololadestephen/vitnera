@@ -213,7 +213,9 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
     event RefundWithdrawn(address indexed investor, uint256 amount);
     /// @dev registry value is a historical snapshot taken at linking time; the
     ///      live registry is always re-resolved from the token for decisions.
-    event RegulatedAssetLinked(uint256 indexed roomId, address indexed regulatedToken, address identityRegistry);
+    event RegulatedAssetLinked(
+        uint256 indexed roomId, address indexed regulatedToken, address identityRegistry
+    );
 
     error Unauthorized();
     error InvalidRoom();

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { appConfig } from "../lib/config";
 
 const consoleQueries = [
   "Solar portfolio · Room 08",
@@ -98,7 +99,7 @@ export function HomePage() {
     <div className="home-page landing-page page-enter">
       <section className="landing-hero">
         <div className="landing-hero-copy">
-          <p className="landing-badge"><span /> Live testnet product · BOT Chain</p>
+          <p className="landing-badge"><span /> {appConfig.chainId === 677 ? "Live on BOT Chain" : "Live testnet product · BOT Chain"}</p>
           <h1>Private evidence,<br /><em>one verified path.</em></h1>
           <p className="landing-lead">
             Create encrypted RWA data rooms, run structured AI evidence review, and grant paid investor access
