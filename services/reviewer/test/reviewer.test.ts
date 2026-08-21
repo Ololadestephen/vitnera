@@ -10,23 +10,17 @@ const privateKey = `0x${"11".repeat(32)}` as Hex;
 const contract = `0x${"22".repeat(20)}` as `0x${string}`;
 
 const report: AIReviewReport = {
-  templateId: "solar-installation-v1",
+  templateId: "rwa-basic-v1",
   policyVersion: 1,
   reviewStatus: "ReviewReady",
+  executiveSummary: "The submitted equipment lease evidence is complete and internally consistent.",
+  keyFindings: ["Generator GEN-4401 is identified consistently across the submitted evidence."],
   missingDocuments: [],
   expiredDocuments: [],
+  blockingIssues: [],
   riskFlags: [],
   inconsistencies: [],
   issuerQuestions: [],
-  extractedAssetSummary: {
-    issuerName: "Sunward SPV",
-    assetLocation: "Lagos",
-    installedCapacityKw: 250,
-    equipmentModels: ["PV-500"],
-    counterparties: ["Sunward SPV"],
-    materialDates: [],
-    materialAmounts: [],
-  },
 };
 
 const baseRequest: CreateReviewRequest = {
@@ -38,19 +32,32 @@ const baseRequest: CreateReviewRequest = {
   expiry: 2_000_000_000,
   consent: { accepted: true, statementVersion: "review-consent-v1" },
   documents: [
-    "ownership_agreement",
-    "equipment_invoice",
-    "equipment_specification",
-    "serial_inventory",
-    "commissioning_certificate",
-  ].map((type, index) => ({ id: String(index), type: type as never, displayName: type, text: "evidence" })),
+    "asset_overview",
+    "ownership_or_control",
+    "valuation_or_financial",
+  ].map((type, index) => ({ id: String(index), type: type as never, displayName: type, text: "Complete readable evidence for this asset category." })),
 };
 
 describe("reviewer", () => {
-  it("deterministically marks missing required evidence incomplete", () => {
-    const enforced = enforceReviewPolicy(report, { documents: baseRequest.documents.slice(0, 2) });
+  it("marks evidence the reviewer identifies as missing incomplete", () => {
+    const enforced = enforceReviewPolicy({ ...report, missingDocuments: ["Valuation or financial evidence"] }, { documents: baseRequest.documents.slice(0, 1) });
     expect(enforced.reviewStatus).toBe("Incomplete");
-    expect(enforced.missingDocuments).toContain("Equipment specification");
+    expect(enforced.missingDocuments).toContain("Valuation or financial evidence");
+    expect(enforced.executiveSummary).toContain("review is incomplete");
+    expect(enforced.keyFindings[0]).toContain("Missing or unreadable required evidence");
+  });
+
+  it("allows one comprehensive dossier to cover every evidence category", () => {
+    const enforced = enforceReviewPolicy(report, {
+      documents: [{ id: "dossier", type: "supporting_document", displayName: "Complete dossier", text: "Ownership, asset, and valuation evidence are combined in this dossier." }],
+    });
+    expect(enforced.reviewStatus).toBe("ReviewReady");
+    expect(enforced.missingDocuments).toEqual([]);
+  });
+
+  it("removes placeholder punctuation from AI findings", () => {
+    const enforced = enforceReviewPolicy({ ...report, keyFindings: ["-", "Valid asset identifier found."] }, baseRequest);
+    expect(enforced.keyFindings).toEqual(["Valid asset identifier found."]);
   });
 
   it("signs the exact EIP-712 payload accepted by the contract", async () => {
@@ -72,6 +79,25 @@ describe("reviewer", () => {
     expect(canonicalJson(report)).toContain("ReviewReady");
   });
 
+  it("keeps ordinary risk observations visible without blocking publication", () => {
+    const enforced = enforceReviewPolicy({
+      ...report,
+      reviewStatus: "NeedsReview",
+      riskFlags: ["Future resale value is uncertain."],
+      issuerQuestions: ["What maintenance reserve is planned?"],
+    }, baseRequest);
+    expect(enforced.reviewStatus).toBe("ReviewReady");
+    expect(enforced.riskFlags).toHaveLength(1);
+  });
+
+  it("blocks publication for explicit evidence-integrity failures", () => {
+    const enforced = enforceReviewPolicy({
+      ...report,
+      blockingIssues: ["The ownership schedule names a different asset identifier."],
+    }, baseRequest);
+    expect(enforced.reviewStatus).toBe("NeedsReview");
+  });
+
   it("retries transient provider schema failures", async () => {
     let attempts = 0;
     const client = {
@@ -85,6 +111,8 @@ describe("reviewer", () => {
     };
     const reviewed = await runStructuredReview(client as never, "test-model", baseRequest);
     expect(reviewed.reviewStatus).toBe("ReviewReady");
+    expect(reviewed.executiveSummary).toContain("equipment lease");
     expect(attempts).toBe(3);
   });
+
 });

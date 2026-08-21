@@ -1,14 +1,28 @@
-import { solarManifestSchema, type SolarManifest } from "@vitnera/core";
+import {
+  creatorRoomKeyEnvelopeSchema,
+  publicRwaAssetTypeSchema,
+  rwaManifestSchema,
+  type RwaManifest,
+} from "@vitnera/core";
 import { z } from "zod";
 
 export const publicRoomMetadataSchema = z.object({
-  format: z.enum(["vitnera-rwa-room-v1", "aegiskey-rwa-room-v1"]),
+  format: z.enum(["vitnera-rwa-room-v3", "vitnera-rwa-room-v2", "vitnera-rwa-room-v1", "aegiskey-rwa-room-v1"]),
   title: z.string().min(1).max(120),
   summary: z.string().min(1).max(600),
-  assetLocation: z.string().min(1).max(160),
+  assetLocation: z.string().max(160),
   issuerDisplayName: z.string().min(1).max(120),
-  assetType: z.literal("Solar installation and equipment lease"),
-  manifest: solarManifestSchema,
+  assetType: publicRwaAssetTypeSchema,
+  manifest: rwaManifestSchema,
+  creatorRecoveryEnvelope: creatorRoomKeyEnvelopeSchema.optional(),
+}).superRefine((metadata, context) => {
+  if (metadata.format === "vitnera-rwa-room-v3" && !metadata.creatorRecoveryEnvelope) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["creatorRecoveryEnvelope"],
+      message: "Vitnera v3 metadata requires a creator recovery envelope",
+    });
+  }
 });
 
 export type PublicRoomMetadata = z.infer<typeof publicRoomMetadataSchema>;
@@ -49,7 +63,7 @@ export type ChainRequest = {
 
 export type DraftDocument = {
   id: string;
-  type: SolarManifest["documents"][number]["type"];
+  type: RwaManifest["documents"][number]["type"];
   file: File;
   required: boolean;
 };

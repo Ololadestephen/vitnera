@@ -28,6 +28,13 @@ export function RoomPage() {
     enabled: Boolean(tx.client && room && room.currentReviewId > 0n),
     queryFn: () => tx.client!.readContract({ address: requireContract(), abi: vitneraAbi, functionName: "getReview", args: [room!.currentReviewId] }),
   });
+  const acknowledgedReview = useQuery({
+    queryKey: ["acknowledged-review", room?.id.toString(), room?.currentReviewId.toString()],
+    enabled: Boolean(tx.client && room && room.currentReviewId > 0n),
+    queryFn: () => tx.client!.readContract({
+      address: requireContract(), abi: vitneraAbi, functionName: "acknowledgedReviewId", args: [room!.id],
+    }),
+  });
 
   const request = useQuery({
     queryKey: ["latest-request", roomId, room?.version.toString(), address],
@@ -60,11 +67,17 @@ export function RoomPage() {
   const currentRequest = request.data;
   const canRequest = room.status === 1 && (!currentRequest || ![1, 2].includes(currentRequest.status));
   const reviewValue = review.data;
+  const issuerAcknowledgedFindings = Boolean(
+    room.currentReviewId > 0n
+      && acknowledgedReview.data === room.currentReviewId
+      && reviewValue
+      && Number(reviewValue.status) !== 1,
+  );
 
   return (
     <div className="page page-enter">
       <div className="room-hero">
-        <div><p className="eyebrow">Room {room.id.toString()} · version {room.version.toString()}</p><h1>{room.metadata?.title ?? `Data room ${room.id}`}</h1><p>{room.metadata?.summary}</p></div>
+        <div><p className="eyebrow">{room.metadata?.assetType.replaceAll("_", " ") ?? "Private asset"} · Room {room.id.toString()} · v{room.version.toString()}</p><h1>{room.metadata?.title ?? `Data room ${room.id}`}</h1><p>{room.metadata?.summary}</p></div>
         <div className="price-block"><span>Escrow deposit</span><strong>{formatEther(room.accessPrice)} BOT</strong><Status tone={room.status === 1 ? "good" : "warn"}>{roomStatuses[room.status]}</Status></div>
       </div>
       <div className="detail-grid">
@@ -84,17 +97,20 @@ export function RoomPage() {
             <label className="field"><span>Recovery passphrase</span><input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="12+ characters" /><small>An encrypted recovery file downloads before payment.</small></label>
             <button className="button primary wide" disabled={tx.pending || !address} onClick={() => void requestAccess().catch(() => undefined)}>{tx.pending ? <Busy label="Submitting escrow" /> : `Request access · ${formatEther(room.accessPrice)} BOT`}</button>
           </>}
-          {currentRequest?.status === 2 && <a className="button primary wide" href="/access"><Download size={17} /> Open My Access</a>}
+          {currentRequest?.status === 2 && <><a className="button primary wide" href="/access"><Download size={17} /> Open My Access</a><p className="privacy-note"><ShieldCheck size={17} /> Private evidence summaries are available only after approved access.</p></>}
           {!address && <div className="notice">Connect a wallet to request access.</div>}
-          {room.status !== 1 && <div className="notice">This room is not accepting requests until its current AI review is active.</div>}
+          {room.status === 0 && <div className="notice">Access is paused while the issuer resolves missing, expired, or contradictory evidence. AI review checks evidence integrity; it does not decide whether the asset is a good investment.</div>}
+          {room.status === 2 && <div className="notice">The issuer has paused new access requests.</div>}
+          {room.status === 3 && <div className="notice">This room is archived and no longer accepts requests.</div>}
           <Notice error={tx.error} message={message} />
           {tx.hash && <a className="text-link" href={explorerTx(tx.hash)} target="_blank" rel="noreferrer">View latest transaction</a>}
         </aside>
       </div>
       <section className="panel review-summary">
         <div><p className="eyebrow">AI review evidence</p><h2>{reviewValue ? reviewStatuses[Number(reviewValue.status)] : "Review not recorded"}</h2></div>
-        {reviewValue && <div className="review-facts"><span><Clock /> Expires {new Date(Number(reviewValue.expiry) * 1000).toLocaleDateString()}</span><span><ShieldCheck /> Reviewer {reviewValue.reviewer.slice(0, 8)}...{reviewValue.reviewer.slice(-6)}</span><span>Report {reviewValue.reportHash.slice(0, 12)}...</span></div>}
+        {reviewValue && <div className="review-facts"><span><Clock /> Expires {new Date(Number(reviewValue.expiry) * 1000).toLocaleDateString()}</span><span><ShieldCheck /> Reviewer {reviewValue.reviewer.slice(0, 8)}...{reviewValue.reviewer.slice(-6)}</span><span>Report {reviewValue.reportHash.slice(0, 12)}...</span>{issuerAcknowledgedFindings && <span className="issuer-override-label">Issuer published with acknowledged findings</span>}</div>}
       </section>
+      {issuerAcknowledgedFindings && <div className="notice review-disclosure">The AI report contains unresolved evidence warnings. The issuer acknowledged those findings on-chain and chose to publish. This is not an AI approval or investment recommendation.</div>}
     </div>
   );
 }

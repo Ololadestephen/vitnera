@@ -1,16 +1,16 @@
 import {
   REVIEW_POLICY_VERSION,
-  SOLAR_TEMPLATE_ID,
+  RWA_BASIC_TEMPLATE_ID,
   aiReviewReportSchema,
-  solarDocumentTypes,
+  rwaDocumentTypes,
 } from "@vitnera/core";
 import { z } from "zod";
 
 export const reviewDocumentSchema = z.object({
   id: z.string().min(1).max(96),
-  type: z.enum(solarDocumentTypes),
+  type: z.enum(rwaDocumentTypes),
   displayName: z.string().min(1).max(160),
-  text: z.string().min(1).max(200_000),
+  text: z.string().trim().min(20).max(200_000),
 });
 
 export const createReviewRequestSchema = z.object({
@@ -28,7 +28,7 @@ export const createReviewRequestSchema = z.object({
 });
 
 export const reviewerOutputSchema = aiReviewReportSchema.extend({
-  templateId: z.literal(SOLAR_TEMPLATE_ID),
+  templateId: z.literal(RWA_BASIC_TEMPLATE_ID),
   policyVersion: z.literal(REVIEW_POLICY_VERSION),
 });
 

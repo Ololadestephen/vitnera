@@ -1,14 +1,14 @@
 import { canonicalJson } from "./canonical.js";
 import { concatBytes, hexToBytes, utf8 } from "./encoding.js";
 import { sha256Bytes, sha256Hex } from "./hash.js";
-import { solarManifestSchema, type SolarManifest } from "./schemas.js";
+import { rwaManifestSchema, type RwaManifest } from "./schemas.js";
 
-export async function manifestHash(manifest: SolarManifest): Promise<`0x${string}`> {
-  return sha256Hex(utf8(canonicalJson(solarManifestSchema.parse(manifest))));
+export async function manifestHash(manifest: RwaManifest): Promise<`0x${string}`> {
+  return sha256Hex(utf8(canonicalJson(rwaManifestSchema.parse(manifest))));
 }
 
-export async function documentMerkleRoot(manifest: SolarManifest): Promise<`0x${string}`> {
-  const parsed = solarManifestSchema.parse(manifest);
+export async function documentMerkleRoot(manifest: RwaManifest): Promise<`0x${string}`> {
+  const parsed = rwaManifestSchema.parse(manifest);
   let level = await Promise.all(
     parsed.documents.map((document) => sha256Bytes(utf8(canonicalJson(document)))),
   );

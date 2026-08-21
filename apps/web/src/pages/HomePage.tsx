@@ -1,64 +1,193 @@
-import { ArrowRight, Bot, FileCheck2, KeyRound, Landmark, LockKeyhole, ScanSearch } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  Check,
+  Database,
+  EyeOff,
+  FileKey2,
+  FolderLock,
+  Search,
+  ShieldCheck,
+  WalletCards,
+} from "lucide-react";
 import { Link } from "react-router-dom";
+
+const lifecycle = [
+  {
+    number: "01",
+    title: "Seal",
+    label: "LOCAL ENCRYPTION",
+    copy: "Documents are encrypted in the issuer's browser. Only ciphertext and integrity commitments leave the device.",
+  },
+  {
+    number: "02",
+    title: "Review",
+    label: "AI EVIDENCE",
+    copy: "The issuer explicitly selects evidence for a no-retention review session and receives structured findings.",
+  },
+  {
+    number: "03",
+    title: "Activate",
+    label: "BOT CHAIN",
+    copy: "A signed review is bound to the current document root before the room can accept investor requests.",
+  },
+  {
+    number: "04",
+    title: "Grant",
+    label: "WALLET ACCESS",
+    copy: "Approved investors receive a wallet-bound key envelope and decrypt the protected files locally.",
+  },
+];
 
 export function HomePage() {
   return (
-    <div className="home-page page-enter">
-      <section className="hero-panel">
-        <img className="hero-image" src="/images/vitnera-solar-dawn.jpg" alt="" aria-hidden="true" />
-        <div className="hero-shade" />
-        <div className="hero-content">
-          <div className="hero-kicker"><span /> Confidential RWA intelligence</div>
-          <h1>Private evidence.<br /><em>Investable confidence.</em></h1>
-          <p>
-            Encrypted asset data rooms where AI review, investor approval, and BOT settlement meet.
+    <div className="home-page landing-page page-enter">
+      <section className="landing-hero">
+        <div className="landing-hero-copy">
+          <p className="landing-badge"><span /> Live testnet product · BOT Chain</p>
+          <h1>Private evidence,<br /><em>one verified path.</em></h1>
+          <p className="landing-lead">
+            Create encrypted RWA data rooms, run structured AI evidence review, and grant paid investor access
+            without publishing plaintext documents or room keys.
           </p>
-          <div className="hero-actions">
-            <Link className="button hero-primary" to="/rooms">Explore data rooms <ArrowRight size={17} /></Link>
-            <Link className="button hero-secondary" to="/studio">Issue an asset room</Link>
+          <div className="landing-actions">
+            <Link className="button primary" to="/rooms">Explore rooms <ArrowRight size={17} /></Link>
+            <Link className="button secondary" to="/studio">Create a private room</Link>
+          </div>
+          <div className="landing-assurances" aria-label="Vitnera privacy assurances">
+            <span><FolderLock size={15} /> Ciphertext storage</span>
+            <span><Bot size={15} /> Consent-based AI</span>
+            <span><WalletCards size={15} /> BOT escrow</span>
           </div>
         </div>
-        <aside className="hero-evidence" aria-label="Platform assurances">
-          <div className="evidence-heading"><ScanSearch size={16} /><span>Evidence protocol</span><strong>LIVE</strong></div>
-          <dl>
-            <div><dt>Storage</dt><dd>Ciphertext only</dd></div>
-            <div><dt>Activation</dt><dd>AI review gated</dd></div>
-            <div><dt>Settlement</dt><dd>BOT escrow</dd></div>
-          </dl>
-        </aside>
-        <div className="hero-index" aria-hidden="true">01 / SOLAR ASSETS</div>
+
+        <div className="landing-console-wrap" aria-label="Vitnera evidence workspace preview">
+          <div className="landing-console">
+            <div className="console-bar">
+              <div><ShieldCheck size={18} /><strong>Evidence workspace</strong></div>
+              <span>private by default</span>
+            </div>
+            <div className="console-search"><Search size={20} /><span>Solar portfolio · Room 08</span><kbd>esc</kbd></div>
+            <div className="console-tabs">
+              <button className="active"><FileKey2 size={18} /> Evidence</button>
+              <button><Bot size={18} /> Review</button>
+              <button><WalletCards size={18} /> Access</button>
+            </div>
+            <div className="console-room active">
+              <div><span className="console-dot" /><strong>Review ready</strong><small>CURRENT VERSION</small></div>
+              <p>6 encrypted files · root 0x82f1...c91a</p>
+            </div>
+            <div className="console-room">
+              <div><span className="console-dot muted" /><strong>Ownership evidence</strong><small>ENCRYPTED</small></div>
+              <p>Title record and equipment schedules sealed</p>
+            </div>
+            <div className="console-room">
+              <div><span className="console-dot muted" /><strong>Investor access</strong><small>2 REQUESTS</small></div>
+              <p>Deposits held in BOT Chain escrow</p>
+            </div>
+            <div className="console-footer">
+              <span><EyeOff size={15} /> no public plaintext</span>
+              <strong>document root verified</strong>
+            </div>
+          </div>
+        </div>
       </section>
 
-      <section className="home-thesis">
-        <div className="thesis-copy">
-          <p className="eyebrow"><LockKeyhole size={15} /> Built for evidence, not speculation</p>
-          <h2>The room opens only when the evidence holds.</h2>
+      <section className="landing-flow">
+        <div className="landing-section-copy">
+          <p className="landing-label">CONTROLLED LIFECYCLE</p>
+          <h2>One room, not four separate handoffs.</h2>
           <p>
-            Vitnera gives issuers a controlled way to share sensitive asset documents and gives investors
-            a verifiable path from review to access.
+            Vitnera keeps evidence, review state, payment, and key delivery tied to the same room version.
+            Every transition has one clear owner and one verifiable outcome.
           </p>
-          <Link className="text-link home-link" to="/evidence">See the public evidence trail <ArrowRight size={15} /></Link>
+          <div className="root-stamp"><Database size={18} /><span>documentRoot</span><code>0x82f1...c91a</code></div>
         </div>
-        <div className="proof-sequence" aria-label="How Vitnera works">
-          <article>
-            <span>01</span><FileCheck2 />
-            <div><strong>Seal the evidence</strong><p>Documents are encrypted locally before storage.</p></div>
-          </article>
-          <article>
-            <span>02</span><Bot />
-            <div><strong>Review before activation</strong><p>Structured AI findings are bound to the document root.</p></div>
-          </article>
-          <article>
-            <span>03</span><Landmark />
-            <div><strong>Approve and settle</strong><p>BOT escrow and wallet-bound keys control investor access.</p></div>
-          </article>
+
+        <div className="lifecycle-panel">
+          <div className="lifecycle-heading">
+            <span>ACTIVE ROOM</span><strong>Evidence-to-access workflow</strong><small>version 04</small>
+          </div>
+          <div className="lifecycle-list">
+            {lifecycle.map((step) => (
+              <article key={step.number}>
+                <span className="step-number">{step.number}</span>
+                <div><strong>{step.title}</strong><p>{step.copy}</p></div>
+                <small>{step.label}</small>
+              </article>
+            ))}
+          </div>
+          <div className="lifecycle-ready"><Check size={18} /><strong>Room ready for controlled investor access</strong></div>
         </div>
       </section>
 
-      <section className="home-closing">
-        <KeyRound />
-        <p>Documents stay encrypted in storage. Approved investors decrypt locally.</p>
-        <Link to="/studio">Create a private room <ArrowRight size={15} /></Link>
+      <section className="landing-library">
+        <div className="library-copy">
+          <p className="landing-label">PRIVATE ROOM REGISTER</p>
+          <h2>Keep every asset version verifiable and private.</h2>
+          <p>
+            Manage room status, evidence completeness, access price, and investor requests without exposing the
+            underlying documents in a public directory.
+          </p>
+          <ul>
+            <li><Check /> Rotate the room key whenever evidence changes.</li>
+            <li><Check /> Bind each AI review to its exact document root.</li>
+            <li><Check /> Revoke future-version access without false erasure claims.</li>
+          </ul>
+          <Link className="text-link" to="/evidence">Inspect the technical proof <ArrowRight size={15} /></Link>
+        </div>
+
+        <div className="room-register" aria-label="Private room register preview">
+          <div className="register-bar"><div><FolderLock size={18} /><strong>Private room register</strong></div><span>search · review · grant</span></div>
+          <div className="register-body">
+            <aside>
+              <strong>Vitnera</strong>
+              <button className="active">Asset rooms</button>
+              <button>Access requests</button>
+              <button>Evidence trail</button>
+              <hr />
+              <span>STATUS</span>
+              <small>Review ready</small>
+              <small>Draft</small>
+            </aside>
+            <div className="register-content">
+              <div className="register-search"><Search size={19} /><span>Search private rooms...</span></div>
+              <div className="register-room selected">
+                <ShieldCheck /><div><strong>Northbank Solar Portfolio</strong><span>6 files · Review ready</span></div><small>0.50 BOT</small>
+              </div>
+              <div className="register-room">
+                <FileKey2 /><div><strong>Equipment Lease 014</strong><span>4 files · Awaiting review</span></div><small>PRIVATE</small>
+              </div>
+              <div className="register-room">
+                <Database /><div><strong>Receivables Pool Q3</strong><span>8 files · Draft</span></div><small>DRAFT</small>
+              </div>
+              <div className="register-metrics">
+                <span><small>DOCUMENTS</small><strong>6 encrypted</strong></span>
+                <span><small>REVIEW</small><strong>Root-bound</strong></span>
+                <span><small>ACCESS</small><strong>Wallet-gated</strong></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="landing-final">
+        <div>
+          <p className="landing-label">PRIVATE BY DESIGN</p>
+          <h2>Turn sensitive evidence into controlled investor access.</h2>
+          <p>Start with one encrypted room. Keep plaintext, keys, and investor delivery under explicit control.</p>
+          <div className="landing-actions">
+            <Link className="button primary" to="/studio">Create a room <ArrowRight size={17} /></Link>
+            <Link className="button secondary" to="/rooms">View live rooms</Link>
+          </div>
+        </div>
+        <aside>
+          <strong>Vitnera room standard</strong>
+          <span><Check /> Local AES-GCM encryption</span>
+          <span><Check /> Root-bound AI evidence review</span>
+          <span><Check /> BOT Chain escrow settlement</span>
+          <span><Check /> Wallet-bound key envelopes</span>
+        </aside>
       </section>
     </div>
   );

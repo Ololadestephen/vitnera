@@ -1,17 +1,46 @@
 # Vitnera
 
-Confidential due-diligence infrastructure for real-world assets on BOT Chain.
+Private due-diligence rooms for real-world assets on BOT Chain.
 
-Issuers encrypt solar-asset documents in the browser and upload only ciphertext to IPFS. An explicitly authorized AI review produces a structured, signed EIP-712 attestation. The smart contract accepts the review only when it matches the current document root and version, and only a current `ReviewReady` result can activate the room. Investors then escrow native BOT, register an X25519 public key, and receive a wallet-bound encrypted room-key envelope after issuer approval.
+Vitnera lets an issuer encrypt evidence in the browser, obtain a structured AI review, and publish a paid data room. Investors deposit BOT into contract escrow, request access with a wallet-bound encryption key, and decrypt approved evidence locally.
 
-## Why It Exists
+The first product template is intentionally broad and small: `rwa-basic-v1` supports equipment, real estate, commodities, receivables, and other assets through three required evidence roles:
 
-RWA diligence often forces issuers to choose between public disclosure and a trusted data-room operator. Vitnera separates the system into verifiable layers:
+1. Asset overview
+2. Ownership or control evidence
+3. Valuation or financial evidence
 
-- BOT Chain records room commitments, review evidence, escrow, approval, refunds, withdrawals, and access status.
-- IPFS stores encrypted documents, versioned public metadata, and encrypted key envelopes.
-- The browser performs file encryption, envelope creation/opening, recovery encryption, and document decryption.
-- The AI reviewer receives selected plaintext only after explicit issuer consent and returns a structured decision, not a chatbot response.
+## Live Contract
+
+| Item | BOT Chain testnet value |
+| --- | --- |
+| Chain ID | `968` |
+| Contract | [`0xc6a92F7E7BdDB2ca149518aE408006031808F117`](https://scan.botchain.ai/address/0xc6a92F7E7BdDB2ca149518aE408006031808F117) |
+| Deployment block | `20642802` |
+| Deployment transaction | [`0xb9a93caf…ede5760`](https://scan.botchain.ai/tx/0xb9a93caf4151f4cea3624754ba62fec666b1ab5613567c05f2ff31d78ede5760) |
+| EIP-712 domain | `Vitnera RWA`, version `1` |
+| Supported template | `rwa-basic-v1` |
+
+## Product Flow
+
+### Issuer
+
+1. Add a room title, access price, and one or more evidence files. Asset type and broad location are optional.
+2. Generate a public summary locally from public labels and evidence-category counts. No document text or filenames leave the browser for this summary.
+3. Set up one passphrase-encrypted creator recovery identity and store its downloaded recovery kit safely.
+4. Vitnera generates a fresh AES-256-GCM room key for the room version, encrypts files locally, and uploads only ciphertext to IPFS.
+5. The room key is sealed to the creator recovery public key. The encrypted creator envelope is included in integrity-anchored metadata, while the contract records its metadata hash and room-key commitment.
+6. With explicit consent, selected plaintext is sent to the configured AI reviewer for a separate structured due-diligence session.
+7. The signed EIP-712 review is recorded on-chain, then the issuer makes a separate publication decision. Non-ready findings require an on-chain acknowledgement.
+8. The issuer approves or rejects investor requests and withdraws settled BOT earnings.
+
+### Investor
+
+1. Inspect public asset information and review evidence.
+2. Generate an X25519 key pair locally and deposit the exact room price into contract escrow.
+3. The issuer encrypts the room key for that investor public key.
+4. The investor verifies the envelope hash, downloads ciphertext, and decrypts the approved document version locally.
+5. Rejected or expired requests become pull-based refunds.
 
 ## Architecture
 
@@ -19,166 +48,102 @@ RWA diligence often forces issuers to choose between public disclosure and a tru
 flowchart LR
     Issuer["Issuer browser"]
     Investor["Investor browser"]
-    Web["Vitnera frontend"]
+    Web["Vitnera web app"]
     Storage["IPFS / Pinata"]
-    AI["AI document intelligence"]
-    Evidence["Evidence reader"]
+    Reviewer["Structured AI reviewer"]
+    Contract["VitneraRWA.sol on BOT Chain"]
 
-    subgraph BOT["BOT Chain"]
-        Contract["VitneraRWA.sol"]
-    end
-
-    Issuer -->|"Encrypt documents locally"| Web
+    Issuer -->|"Encrypt locally"| Web
     Web -->|"Upload ciphertext"| Storage
-    Web -->|"Register root, metadata URI, and key commitment"| Contract
-
-    Issuer -->|"Authorize selected documents"| Web
-    Web -->|"Temporary plaintext review session"| AI
-    AI -->|"Signed EIP-712 review"| Web
-    Web -->|"Record review attestation"| Contract
-    Contract -->|"Current ReviewReady enables activation"| Contract
-
-    Investor -->|"Deposit BOT and register X25519 public key"| Contract
-    Issuer -->|"Approve access"| Web
-    Web -->|"Create wallet-bound key envelope"| Storage
-    Web -->|"Record envelope URI and hash"| Contract
-
-    Issuer -->|"Withdraw claimable earnings"| Contract
-    Investor -->|"Withdraw rejected or expired refund"| Contract
+    Web -->|"Commit root, price, and key commitment"| Contract
+    Web -->|"Store encrypted creator recovery envelope"| Storage
+    Issuer -->|"Authorize selected evidence"| Reviewer
+    Reviewer -->|"Signed EIP-712 review"| Web
+    Web -->|"Record signed AI findings"| Contract
+    Issuer -->|"Publish or acknowledge findings"| Contract
+    Investor -->|"Deposit BOT and public key"| Contract
+    Issuer -->|"Approve and create key envelope"| Web
+    Web -->|"Upload encrypted envelope"| Storage
+    Web -->|"Record envelope hash and URI"| Contract
     Investor -->|"Fetch ciphertext and envelope"| Storage
     Investor -->|"Decrypt locally"| Web
-    Contract -->|"Events and attestations"| Evidence
 ```
 
-## Implemented Lifecycle
+## What Is Enforced On-Chain
 
-### Issuer
+[`contracts/src/VitneraRWA.sol`](./contracts/src/VitneraRWA.sol) enforces:
 
-1. Selects solar ownership, invoice, specification, inventory, commissioning, and supporting documents.
-2. Generates a random 256-bit room key in the browser.
-3. Encrypts each file with AES-256-GCM and authenticated room/version/document context.
-4. Uploads ciphertext to IPFS and commits its deterministic document Merkle root on BOT Chain.
-5. Explicitly submits selected document text for structured AI review.
-6. Records the signed review attestation and activates the room only if it is `ReviewReady`.
-7. Reviews escrow requests, encrypts the room key to each investor's X25519 public key, and approves or rejects.
-8. Withdraws claimable BOT earnings.
+- exact payment from `room.accessPrice`;
+- supported templates and review policy versions;
+- EIP-712 reviewer/verifier signatures, authorization, nonces, and expiries;
+- review binding to the current room version, template, and document root;
+- separate signed-review recording and issuer-controlled publication;
+- on-chain issuer acknowledgement when publishing with non-ready AI findings;
+- BOT escrow, issuer earnings, investor refunds, and pull-based withdrawals;
+- new key commitments for every document-root update;
+- request approval, rejection, expiry refund, revocation, pause, and archive state.
 
-### Investor
-
-1. Browses verified public room metadata without seeing protected file contents.
-2. Generates an X25519 key pair locally and downloads a passphrase-encrypted recovery export.
-3. Deposits the exact room price into contract escrow.
-4. After approval, fetches the encrypted key envelope and verifies its on-chain hash.
-5. Opens the envelope locally, verifies each ciphertext hash, and decrypts the approved version.
-6. Reclaims expired or rejected escrow through pull-based refunds.
-
-### Document Updates and Revocation
-
-- Publishing a new root requires a new key commitment and increments the room version.
-- Updating documents invalidates the prior AI review and returns the room to `ReviewRequired`.
-- Old key envelopes are pinned to the metadata URI and key for their approved historical version.
-- `revokeAccess` invalidates the active grant in contract/application state and blocks future retrieval in the app.
-- Revocation cannot erase documents an investor already decrypted. Vitnera does not make that false claim.
-
-## Smart Contract
-
-[`contracts/src/VitneraRWA.sol`](./contracts/src/VitneraRWA.sol) is the canonical protocol implementation. The contract and reviewer use the EIP-712 domain `Vitnera RWA`, version `1`, so AI review attestations are cryptographically bound to this deployment identity.
-
-The contract implements:
-
-- `createDataRoom`
-- `updateDocumentRoot`
-- `updateRoomTerms`
-- `recordAIReview`
-- `recordVerifierAttestation`
-- `activateDataRoom`
-- `requestAccess`
-- `approveAccess`
-- `rejectAccess`
-- `refundExpiredRequest`
-- `withdrawEarnings`
-- `withdrawRefund`
-- `revokeAccess`
-- `pauseDataRoom`
-- `archiveDataRoom`
-
-Important contract controls:
-
-- Exact payment comes from `room.accessPrice`; callers cannot select a cheaper amount.
-- AI and verifier signatures use EIP-712, authorized signer lists, sequential nonces, expiries, document roots, and room versions.
-- Activation requires a supported template, supported policy version, current root, current version, unexpired attestation, and `ReviewReady` status.
-- Escrow accounting separates pending deposits, claimable issuer earnings, and claimable investor refunds.
-- Withdrawals use checks-effects-interactions and `ReentrancyGuard`.
-- Metadata and envelope URIs are bounded.
-- New document versions require both a changed root and a changed key commitment.
+AI does not have final publication authority. A ready review can be published by the issuer normally. A non-ready review can be published only through `activateDataRoomWithAcknowledgement`, which records an issuer acknowledgement hash and exposes that override to investors. A new document version or review invalidates the previous acknowledgement.
 
 ## AI Review
 
-The reviewer is in [`services/reviewer`](./services/reviewer).
+The reviewer in [`services/reviewer`](./services/reviewer) is a structured evidence-analysis service, not a chatbot or autonomous gatekeeper. It produces a concise executive summary and key findings, extracts asset facts, and evaluates identifiers, parties, dates, amounts, ownership/control claims, valuation evidence, document completeness, and inconsistencies. The issuer can download the complete signed review result from the Workspace and remains responsible for the publication decision.
 
-It:
+Public labels simplify the Solidity enum names:
 
-- accepts only explicitly consented review requests;
-- requires schema-constrained output;
-- deterministically marks a room `Incomplete` when required solar documents are absent;
-- prevents `ReviewReady` when risk flags, expired documents, or inconsistencies remain;
-- signs the exact EIP-712 payload consumed by the contract;
-- does not log request bodies or persist document plaintext.
+| Contract status | Product label |
+| --- | --- |
+| `ReviewReady` | Ready |
+| `NeedsReview` | Attention needed |
+| `Incomplete` | Incomplete |
 
-Privacy wording is intentionally precise: selected plaintext is disclosed to the configured AI provider for the authorized review session. Provider retention and abuse-monitoring policies may apply, so Vitnera does not claim zero retention unless the deployed provider account guarantees it. The reviewer supports Groq by default through its OpenAI-compatible Responses API.
+Public marketplace summaries are generated locally from fields already intended for publication and generic evidence-category counts. The summary flow does not call an AI provider and never sends file content or filenames over the network.
 
-The product labels results **AI Reviewed**, never legally verified, certified, or investment-safe.
+The separate AI evidence review has a narrower, explicit trust boundary: storage and on-chain data contain ciphertext or commitments, but documents selected by the issuer for review are decrypted locally and transmitted only when the issuer starts an authorized review session. Provider retention and abuse-monitoring policies may apply. An AI review is not legal verification, regulatory approval, or investment advice.
 
-## Repository Layout
+## Creator Recovery
+
+- A creator generates one X25519 recovery identity per wallet instead of setting a new passphrase for every room.
+- The private recovery identity is encrypted locally with PBKDF2-SHA-256 and AES-256-GCM, then downloaded as `vitnera-*-creator-recovery.json`.
+- The plaintext recovery identity is kept in `sessionStorage` only. It is not written to `localStorage`, IPFS, BOT Chain, or either backend service.
+- Every room version receives a new random AES-256-GCM key. That key is sealed to the creator recovery public key with X25519, HKDF-SHA-256, and AES-256-GCM.
+- The encrypted creator envelope is part of hashed public metadata. Recovery succeeds only when the recovered room key matches the on-chain key commitment.
+- Existing `v1/v2` rooms remain readable through their legacy per-room backup controls.
+
+## Repository
 
 ```text
-botchain-rwa/
-├── apps/web/                 React + Vite issuer/investor application
-├── contracts/                Foundry contract, deployment script, and tests
-├── packages/core/            Browser cryptography, schemas, hashes, and manifests
-├── services/reviewer/        Structured AI review and EIP-712 signer
+vitnera/
+├── apps/web/              React, Vite, wagmi, and browser cryptography UI
+├── contracts/             Foundry contract, deployment script, and tests
+├── packages/core/         Schemas, encryption, hashing, manifests, and envelopes
+├── services/reviewer/     Structured AI review and EIP-712 signer
+├── docs/DEPLOYMENT.md
 ├── .env.example
 └── package.json
 ```
 
 ## Local Development
 
-### Prerequisites
+Requirements:
 
-- Node.js 20 or newer
-- npm 10 or newer
+- Node.js 20+
+- npm 10+
 - Foundry
 - A BOT Chain-compatible browser wallet
-- Pinata-backed upload API
-- Groq API key, or another supported AI-provider key
-- Dedicated EIP-712 reviewer signer
-
-### Install and verify
+- An upload API that accepts encrypted blobs
+- A Groq/OpenAI-compatible API key
+- A dedicated reviewer signing key
 
 ```bash
-cd botchain-rwa
+cd /Users/apple/Documents/vitnera
 npm install
 npm run setup:contracts
 npm test
 npm run build
 ```
 
-Expected test coverage:
-
-- 12 Foundry contract tests, including exact-payment fuzzing and replay protection
-- 5 browser-cryptography/manifest tests
-- 3 reviewer policy/signature/retry tests
-- Full TypeScript and Vite production build
-
-### Configure
-
-```bash
-cp .env.example .env
-```
-
-Do not expose `DEPLOYER_PRIVATE_KEY`, `REVIEWER_PRIVATE_KEY`, `AI_API_KEY`, or Pinata credentials to Vite. Variables prefixed with `VITE_` are public browser configuration.
-
-### Run
+Run the local services:
 
 ```bash
 # Terminal 1
@@ -188,53 +153,70 @@ npm run dev:reviewer
 npm run dev
 ```
 
-Frontend: `http://localhost:5174`
+The web app defaults to `http://localhost:5174`.
 
-The upload API can reuse the existing encrypted-upload service because Vitnera sends only ciphertext blobs and public JSON through `POST /api/upload/ipfs`.
+## Environment
 
-## BOT Chain Deployment
+Copy [`.env.example`](./.env.example) to `.env`. Never expose non-`VITE_` values to the browser.
 
-BOT Chain is EVM-compatible.
+Server/deployment variables:
 
-| Network | Chain ID | RPC |
-| --- | ---: | --- |
-| Testnet | `968` | `https://rpc.bohr.life` |
-| Mainnet | `677` | `https://rpc.botchain.ai` |
+```env
+BOTCHAIN_RPC_URL=https://rpc.bohr.life
+BOTCHAIN_CHAIN_ID=968
+VITNERA_CONTRACT=0xc6a92F7E7BdDB2ca149518aE408006031808F117
+DEPLOYER_PRIVATE_KEY=
+REVIEWER_ADDRESS=
+VERIFIER_ADDRESS=
 
-Official configuration: [BOT Chain developer quick guide](https://dev-docs.botchain.ai/docs/Developers/quick-guide/).
-
-Current Vitnera testnet deployment:
-
-| Item | Value |
-| --- | --- |
-| Contract | [`0xE2278a15d5ab720e41805B7d84A794DA911f4b01`](https://scan.botchain.ai/address/0xE2278a15d5ab720e41805B7d84A794DA911f4b01) |
-| Deployment block | `19850136` |
-| Deployment transaction | [`0x0ac89868…b415393`](https://scan.botchain.ai/tx/0x0ac89868e4f1448af465bdb732e2a2d689911f854413d0511de515203b415393) |
-| EIP-712 domain | `Vitnera RWA`, version `1` |
-
-Deploy and initialize:
-
-```bash
-cd contracts
-source ../.env
-forge script script/DeployVitnera.s.sol:DeployVitneraRWA \
-  --rpc-url "$BOTCHAIN_RPC_URL" \
-  --broadcast
+AI_PROVIDER=groq
+AI_API_KEY=
+AI_BASE_URL=https://api.groq.com/openai/v1
+AI_MODEL=openai/gpt-oss-20b
+REVIEWER_PRIVATE_KEY=
+REVIEWER_ALLOWED_ORIGINS=http://localhost:5174
 ```
 
-The script enables the solar template, policy version `1`, the AI reviewer, and an optional verifier. Record the deployed address and deployment block in both server and browser environments.
+Public frontend variables:
 
-See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for service deployment and environment separation.
+```env
+VITE_BOTCHAIN_RPC_URL=https://rpc.bohr.life
+VITE_BOTCHAIN_CHAIN_ID=968
+VITE_VITNERA_CONTRACT=0xc6a92F7E7BdDB2ca149518aE408006031808F117
+VITE_DEPLOYMENT_BLOCK=20642802
+VITE_STORAGE_API_URL=https://your-upload-api.example
+VITE_REVIEWER_API_URL=https://your-reviewer.example
+```
+
+## Verification
+
+Current automated checks:
+
+- 17 Foundry contract tests, including issuer acknowledgement overrides, a complete issuer-to-investor lifecycle, exact-payment fuzzing, replay protection, version/key rotation, and escrow accounting;
+- 8 core cryptography, recovery, summary, and manifest tests;
+- 7 reviewer policy, schema, and signing tests;
+- TypeScript compilation and production Vite build.
+
+Run everything with:
+
+```bash
+npm test
+npm run build
+```
 
 ## Security Boundaries
 
 - IPFS confidentiality comes from encryption, not CID secrecy.
-- Room and investor private keys are never written to `localStorage`.
-- Session storage contains active session keys; durable backups are passphrase-encrypted exports.
-- AI review receives selected plaintext with issuer consent; storage and on-chain state remain encrypted/committed.
-- Issuer approval is discretionary. AI review gates room activation but is not legal certification.
-- Contract revocation governs future application access, not already learned plaintext.
-- The current direct event reader is sufficient for the challenge lifecycle; a dedicated indexed database is a later scalability improvement.
+- Raw room and investor private keys are not stored in `localStorage`.
+- Active keys and the creator recovery identity are session-scoped; durable recovery exports are passphrase-encrypted.
+- New room versions rotate their AES key and seal it to the creator recovery identity through an integrity-anchored envelope.
+- Public summaries are generated locally and disclose no document content to an AI provider.
+- Updating documents rotates the room key and invalidates the prior review.
+- Revocation blocks future application access and future versions; it cannot erase plaintext already decrypted by an investor.
+- The authorized AI reviewer is an explicit trust boundary for analysis and signing. The contract verifies its signature but does not independently reproduce the AI analysis.
+- AI findings are advisory. The issuer owns the publication decision, and non-ready overrides are acknowledged on-chain and disclosed to investors.
+
+See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for deployment and secret separation.
 
 ## License
 

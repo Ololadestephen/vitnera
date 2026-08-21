@@ -1,4 +1,9 @@
-import { base64ToBytes, bytesToBase64, type InvestorKeyPair } from "@vitnera/core";
+import {
+  base64ToBytes,
+  bytesToBase64,
+  type CreatorRecoveryIdentity,
+  type InvestorKeyPair,
+} from "@vitnera/core";
 
 const prefix = "vitnera:rwa:v1";
 const legacyPrefix = "aegiskey:rwa:v1";
@@ -26,6 +31,26 @@ export function loadInvestorKey(wallet: string, roomId: string, version: number)
   if (!value) return null;
   const parsed = JSON.parse(value) as { privateKey: string; publicKey: string };
   return { privateKey: base64ToBytes(parsed.privateKey), publicKey: base64ToBytes(parsed.publicKey) };
+}
+
+export function saveCreatorRecoveryIdentity(wallet: string, identity: CreatorRecoveryIdentity): void {
+  sessionStorage.setItem(
+    `${prefix}:creator-recovery:${wallet.toLowerCase()}`,
+    JSON.stringify({
+      privateKey: bytesToBase64(identity.privateKey),
+      publicKey: bytesToBase64(identity.publicKey),
+    }),
+  );
+}
+
+export function loadCreatorRecoveryIdentity(wallet: string): CreatorRecoveryIdentity | null {
+  const value = sessionStorage.getItem(`${prefix}:creator-recovery:${wallet.toLowerCase()}`);
+  if (!value) return null;
+  const parsed = JSON.parse(value) as { privateKey: string; publicKey: string };
+  return {
+    privateKey: base64ToBytes(parsed.privateKey),
+    publicKey: base64ToBytes(parsed.publicKey),
+  };
 }
 
 export function downloadJson(value: unknown, filename: string): void {

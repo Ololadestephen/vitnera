@@ -16,7 +16,7 @@ export const appConfig = {
   chainId,
   rpcUrl,
   contract: import.meta.env.VITE_VITNERA_CONTRACT as Address | undefined,
-  storageApi: (import.meta.env.VITE_STORAGE_API_URL ?? "http://localhost:8787").replace(/\/$/u, ""),
+  storageApi: (import.meta.env.DEV ? "/storage-api" : (import.meta.env.VITE_STORAGE_API_URL ?? "http://localhost:8787")).replace(/\/$/u, ""),
   reviewerApi: (import.meta.env.VITE_REVIEWER_API_URL ?? "http://localhost:8790").replace(/\/$/u, ""),
   deploymentBlock: BigInt(import.meta.env.VITE_DEPLOYMENT_BLOCK ?? "0"),
 };

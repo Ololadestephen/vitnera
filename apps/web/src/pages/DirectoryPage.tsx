@@ -12,7 +12,7 @@ export function DirectoryPage() {
   const [filter, setFilter] = useState<"all" | "active" | "review">("all");
   const visible = useMemo(
     () => (rooms.data ?? []).filter((room) => {
-      const text = `${room.metadata?.title ?? ""} ${room.metadata?.assetLocation ?? ""} ${room.metadata?.issuerDisplayName ?? ""}`.toLowerCase();
+      const text = `${room.metadata?.title ?? ""} ${room.metadata?.assetLocation ?? ""} ${room.metadata?.issuerDisplayName ?? ""} ${room.metadata?.assetType ?? ""}`.toLowerCase();
       const matchesSearch = text.includes(search.toLowerCase());
       const matchesFilter = filter === "all" || (filter === "active" ? room.status === 1 : room.status === 0);
       return matchesSearch && matchesFilter;
@@ -23,13 +23,13 @@ export function DirectoryPage() {
   return (
     <div className="page page-enter">
       <div className="page-heading split-heading">
-        <div><p className="eyebrow">Public directory</p><h1>Solar data rooms</h1><p>Browse public facts. Protected evidence remains encrypted until approval.</p></div>
+        <div><p className="eyebrow">Private asset directory</p><h1>RWA data rooms</h1><p>Review public asset facts. Protected evidence remains encrypted until approval.</p></div>
         <div className="chain-stamp"><ShieldCheck /> BOT Chain evidence</div>
       </div>
       <div className="directory-tools">
         <label><Search size={18} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search issuer, asset, or location" /></label>
         <div className="segmented">
-          {(["all", "active", "review"] as const).map((value) => <button className={filter === value ? "active" : ""} key={value} onClick={() => setFilter(value)}>{value === "review" ? "Review pending" : value}</button>)}
+          {(["all", "active", "review"] as const).map((value) => <button className={filter === value ? "active" : ""} key={value} onClick={() => setFilter(value)}>{value === "review" ? "Needs review" : value}</button>)}
         </div>
       </div>
       {rooms.isLoading && <div className="empty-state"><Busy label="Reading BOT Chain" /></div>}
@@ -40,7 +40,7 @@ export function DirectoryPage() {
           <article className="room-card" key={room.id.toString()}>
             <div className="card-top"><span>ROOM {room.id.toString().padStart(3, "0")}</span><Status tone={room.status === 1 ? "good" : "warn"}>{roomStatuses[room.status]}</Status></div>
             <div className="room-card-body">
-              <p className="overline">{room.metadata?.assetLocation ?? "Metadata unavailable"}</p>
+              <p className="overline">{room.metadata ? [room.metadata.assetType.replaceAll("_", " "), room.metadata.assetLocation].filter(Boolean).join(" · ") : "Metadata unavailable"}</p>
               <h2>{room.metadata?.title ?? `Data room ${room.id}`}</h2>
               <p>{room.metadata?.summary ?? "The metadata URI could not be verified."}</p>
             </div>

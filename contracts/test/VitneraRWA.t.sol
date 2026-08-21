@@ -14,7 +14,7 @@ contract VitneraRWATest is Test {
     address internal issuer = makeAddr("issuer");
     address internal investor = makeAddr("investor");
 
-    bytes32 internal constant SOLAR_TEMPLATE = keccak256("solar-installation-v1");
+    bytes32 internal constant RWA_BASIC_TEMPLATE = keccak256("rwa-basic-v1");
     bytes32 internal constant ROOT_V1 = keccak256("documents-v1");
     bytes32 internal constant ROOT_V2 = keccak256("documents-v2");
     bytes32 internal constant KEY_V1 = keccak256("room-key-v1");
@@ -27,7 +27,7 @@ contract VitneraRWATest is Test {
         rwa = new VitneraRWA(address(this));
         rwa.setAuthorizedReviewer(reviewer, true);
         rwa.setAuthorizedVerifier(verifier, true);
-        rwa.setSupportedTemplate(SOLAR_TEMPLATE, true);
+        rwa.setSupportedTemplate(RWA_BASIC_TEMPLATE, true);
         rwa.setSupportedPolicyVersion(1, true);
         vm.deal(investor, 10 ether);
         vm.deal(issuer, 1 ether);
@@ -64,6 +64,59 @@ contract VitneraRWATest is Test {
         vm.prank(issuer);
         vm.expectRevert(VitneraRWA.InvalidReview.selector);
         rwa.activateDataRoom(roomId);
+    }
+
+    function testIssuerCanAcknowledgeFindingsAndActivate() public {
+        uint256 roomId = _createRoom();
+        uint256 reviewId = _recordReview(roomId, ROOT_V1, 1, VitneraRWA.ReviewStatus.NeedsReview);
+        bytes32 acknowledgement = keccak256("issuer-accepts-review-findings");
+
+        vm.prank(issuer);
+        rwa.activateDataRoomWithAcknowledgement(roomId, acknowledgement);
+
+        assertEq(uint8(rwa.getRoom(roomId).status), uint8(VitneraRWA.RoomStatus.Active));
+        assertEq(rwa.acknowledgedReviewId(roomId), reviewId);
+        assertEq(rwa.reviewAcknowledgementHash(roomId), acknowledgement);
+        assertTrue(rwa.isRoomReviewAccepted(roomId));
+        assertFalse(rwa.isRoomReviewReady(roomId));
+
+        _requestAccess(roomId);
+    }
+
+    function testCannotAcknowledgeWithoutCurrentSignedReview() public {
+        uint256 roomId = _createRoom();
+        vm.prank(issuer);
+        vm.expectRevert(VitneraRWA.InvalidReview.selector);
+        rwa.activateDataRoomWithAcknowledgement(roomId, keccak256("acknowledgement"));
+    }
+
+    function testReadyReviewCanRecordAndActivateAtomically() public {
+        uint256 roomId = _createRoom();
+        VitneraRWA.AIReviewAttestation memory attestation =
+            _attestation(roomId, ROOT_V1, 1, VitneraRWA.ReviewStatus.ReviewReady, 0);
+        bytes memory signature = _sign(attestation);
+
+        vm.prank(issuer);
+        uint256 reviewId = rwa.recordReviewAndActivate(attestation, signature);
+
+        VitneraRWA.DataRoom memory room = rwa.getRoom(roomId);
+        assertEq(room.currentReviewId, reviewId);
+        assertEq(uint8(room.status), uint8(VitneraRWA.RoomStatus.Active));
+        assertEq(rwa.reviewerNonces(reviewer), 1);
+    }
+
+    function testNonReadyAtomicReviewRevertsWithoutConsumingNonce() public {
+        uint256 roomId = _createRoom();
+        VitneraRWA.AIReviewAttestation memory attestation =
+            _attestation(roomId, ROOT_V1, 1, VitneraRWA.ReviewStatus.NeedsReview, 0);
+        bytes memory signature = _sign(attestation);
+
+        vm.prank(issuer);
+        vm.expectRevert(VitneraRWA.InvalidReview.selector);
+        rwa.recordReviewAndActivate(attestation, signature);
+
+        assertEq(rwa.reviewCount(), 0);
+        assertEq(rwa.reviewerNonces(reviewer), 0);
     }
 
     function testVerifierAttestationIsRootBoundAndReplayProtected() public {
@@ -126,6 +179,29 @@ contract VitneraRWATest is Test {
         rwa.withdrawEarnings();
         assertEq(issuer.balance, before + PRICE);
         assertEq(address(rwa).balance, 0);
+    }
+
+    function testCompleteIssuerToInvestorLifecycle() public {
+        uint256 roomId = _createRoom();
+        VitneraRWA.AIReviewAttestation memory attestation =
+            _attestation(roomId, ROOT_V1, 1, VitneraRWA.ReviewStatus.ReviewReady, 0);
+        bytes memory signature = _sign(attestation);
+
+        vm.prank(issuer);
+        rwa.recordReviewAndActivate(attestation, signature);
+
+        uint256 requestId = _requestAccess(roomId);
+        vm.prank(issuer);
+        rwa.approveAccess(requestId, keccak256("investor-envelope"), "ipfs://investor-envelope");
+
+        assertEq(uint8(rwa.getRoom(roomId).status), uint8(VitneraRWA.RoomStatus.Active));
+        assertEq(uint8(rwa.getAccessRequest(requestId).status), uint8(VitneraRWA.RequestStatus.Approved));
+        assertEq(rwa.claimableEarnings(issuer), PRICE);
+
+        uint256 issuerBalance = issuer.balance;
+        vm.prank(issuer);
+        rwa.withdrawEarnings();
+        assertEq(issuer.balance, issuerBalance + PRICE);
     }
 
     function testRejectCreditsPullRefund() public {
@@ -217,7 +293,7 @@ contract VitneraRWATest is Test {
             ROOT_V1,
             KEY_V1,
             keccak256("terms-v1"),
-            SOLAR_TEMPLATE,
+            RWA_BASIC_TEMPLATE,
             PRICE,
             2 days
         );
@@ -255,7 +331,7 @@ contract VitneraRWATest is Test {
             roomId: roomId,
             roomVersion: version,
             documentRoot: root,
-            templateId: SOLAR_TEMPLATE,
+            templateId: RWA_BASIC_TEMPLATE,
             reviewStatus: status,
             riskFlagsHash: keccak256("risk-flags"),
             reportHash: keccak256("report"),

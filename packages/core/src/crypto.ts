@@ -32,6 +32,31 @@ export type InvestorKeyPair = {
   publicKey: Uint8Array;
 };
 
+export type CreatorRecoveryIdentity = InvestorKeyPair;
+
+export type CreatorRecoveryExport = {
+  format: "vitnera-creator-recovery-v1";
+  wallet: string;
+  publicKey: string;
+  salt: string;
+  iv: string;
+  ciphertext: string;
+  iterations: number;
+  createdAt: string;
+};
+
+export type CreatorRoomKeyEnvelope = {
+  format: "vitnera-creator-room-key-envelope-v1";
+  assetId: string;
+  roomVersion: number;
+  keyCommitment: string;
+  recoveryPublicKey: string;
+  ephemeralPublicKey: string;
+  iv: string;
+  ciphertext: string;
+  associatedData: string;
+};
+
 export type KeyEnvelope = {
   format: "vitnera-key-envelope-v1" | "aegiskey-key-envelope-v1";
   roomId: string;
@@ -129,6 +154,96 @@ export async function decryptDocument(input: {
 export function generateInvestorKeyPair(): InvestorKeyPair {
   const privateKey = x25519.utils.randomPrivateKey();
   return { privateKey, publicKey: x25519.getPublicKey(privateKey) };
+}
+
+export function generateCreatorRecoveryIdentity(): CreatorRecoveryIdentity {
+  return generateInvestorKeyPair();
+}
+
+export async function createCreatorRoomKeyEnvelope(input: {
+  roomKey: Uint8Array;
+  recoveryPublicKey: Uint8Array;
+  assetId: string;
+  roomVersion: number;
+  keyCommitment: `0x${string}`;
+}): Promise<CreatorRoomKeyEnvelope> {
+  assertLength(input.roomKey, AES_KEY_BYTES, "Room key");
+  assertLength(input.recoveryPublicKey, 32, "Creator recovery public key");
+  if ((await sha256Hex(input.roomKey)) !== input.keyCommitment) {
+    throw new Error("Room key does not match its commitment");
+  }
+  const ephemeralPrivateKey = x25519.utils.randomPrivateKey();
+  const ephemeralPublicKey = x25519.getPublicKey(ephemeralPrivateKey);
+  const recoveryPublicKey = bytesToBase64(input.recoveryPublicKey);
+  const associatedData = canonicalJson({
+    protocol: "vitnera-creator-room-key-envelope-v1",
+    assetId: input.assetId,
+    roomVersion: input.roomVersion,
+    keyCommitment: input.keyCommitment,
+    recoveryPublicKey,
+  });
+  const sharedSecret = x25519.getSharedSecret(ephemeralPrivateKey, input.recoveryPublicKey);
+  const wrappingKey = await deriveEnvelopeKey(sharedSecret, associatedData);
+  const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: asBuffer(iv), additionalData: asBuffer(utf8(associatedData)) },
+      wrappingKey,
+      asBuffer(input.roomKey),
+    ),
+  );
+  return {
+    format: "vitnera-creator-room-key-envelope-v1",
+    assetId: input.assetId,
+    roomVersion: input.roomVersion,
+    keyCommitment: input.keyCommitment,
+    recoveryPublicKey,
+    ephemeralPublicKey: bytesToBase64(ephemeralPublicKey),
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(ciphertext),
+    associatedData,
+  };
+}
+
+export async function openCreatorRoomKeyEnvelope(
+  envelope: CreatorRoomKeyEnvelope,
+  recoveryPrivateKey: Uint8Array,
+): Promise<Uint8Array> {
+  assertLength(recoveryPrivateKey, 32, "Creator recovery private key");
+  const recoveryPublicKey = x25519.getPublicKey(recoveryPrivateKey);
+  if (bytesToHex(recoveryPublicKey) !== bytesToHex(base64ToBytes(envelope.recoveryPublicKey))) {
+    throw new Error("This room was sealed to another creator recovery identity");
+  }
+  const expectedAssociatedData = canonicalJson({
+    protocol: envelope.format,
+    assetId: envelope.assetId,
+    roomVersion: envelope.roomVersion,
+    keyCommitment: envelope.keyCommitment,
+    recoveryPublicKey: envelope.recoveryPublicKey,
+  });
+  if (expectedAssociatedData !== envelope.associatedData) {
+    throw new Error("Creator room-key envelope metadata has been modified");
+  }
+  const sharedSecret = x25519.getSharedSecret(
+    recoveryPrivateKey,
+    base64ToBytes(envelope.ephemeralPublicKey),
+  );
+  const wrappingKey = await deriveEnvelopeKey(sharedSecret, envelope.associatedData);
+  const roomKey = new Uint8Array(
+    await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: asBuffer(base64ToBytes(envelope.iv)),
+        additionalData: asBuffer(utf8(envelope.associatedData)),
+      },
+      wrappingKey,
+      asBuffer(base64ToBytes(envelope.ciphertext)),
+    ),
+  );
+  if ((await sha256Hex(roomKey)) !== envelope.keyCommitment) {
+    throw new Error("Recovered room key does not match its commitment");
+  }
+  return roomKey;
 }
 
 export async function createKeyEnvelope(input: {
@@ -241,6 +356,61 @@ export async function importRecoveryBundle(bundle: RecoveryExport, passphrase: s
   const publicKey = x25519.getPublicKey(privateKey);
   if (bytesToHex(publicKey) !== bytesToHex(base64ToBytes(payload.publicKey))) {
     throw new Error("Recovery bundle public key mismatch");
+  }
+  return { privateKey, publicKey };
+}
+
+export async function exportCreatorRecoveryIdentity(input: {
+  identity: CreatorRecoveryIdentity;
+  wallet: string;
+  passphrase: string;
+}): Promise<CreatorRecoveryExport> {
+  if (input.passphrase.length < 12) throw new Error("Recovery passphrase must contain at least 12 characters");
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(AES_IV_BYTES));
+  const key = await deriveRecoveryKey(input.passphrase, salt, RECOVERY_ITERATIONS, ["encrypt"]);
+  const payload = utf8(
+    canonicalJson({
+      privateKey: bytesToBase64(input.identity.privateKey),
+      publicKey: bytesToBase64(input.identity.publicKey),
+    }),
+  );
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt({ name: "AES-GCM", iv: asBuffer(iv) }, key, asBuffer(payload)),
+  );
+  return {
+    format: "vitnera-creator-recovery-v1",
+    wallet: input.wallet.toLowerCase(),
+    publicKey: bytesToBase64(input.identity.publicKey),
+    salt: bytesToBase64(salt),
+    iv: bytesToBase64(iv),
+    ciphertext: bytesToBase64(ciphertext),
+    iterations: RECOVERY_ITERATIONS,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function importCreatorRecoveryIdentity(
+  bundle: CreatorRecoveryExport,
+  passphrase: string,
+): Promise<CreatorRecoveryIdentity> {
+  if (bundle.format !== "vitnera-creator-recovery-v1") throw new Error("Unsupported creator recovery format");
+  const key = await deriveRecoveryKey(passphrase, base64ToBytes(bundle.salt), bundle.iterations, ["decrypt"]);
+  const plaintext = new Uint8Array(
+    await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: asBuffer(base64ToBytes(bundle.iv)) },
+      key,
+      asBuffer(base64ToBytes(bundle.ciphertext)),
+    ),
+  );
+  const payload = JSON.parse(decodeUtf8(plaintext)) as { privateKey: string; publicKey: string };
+  const privateKey = base64ToBytes(payload.privateKey);
+  const publicKey = x25519.getPublicKey(privateKey);
+  if (
+    bytesToHex(publicKey) !== bytesToHex(base64ToBytes(payload.publicKey))
+    || bytesToHex(publicKey) !== bytesToHex(base64ToBytes(bundle.publicKey))
+  ) {
+    throw new Error("Creator recovery identity public key mismatch");
   }
   return { privateKey, publicKey };
 }

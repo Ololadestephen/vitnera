@@ -27,12 +27,12 @@ Save the deployed contract address and first deployment block.
 Current BOT Chain testnet deployment:
 
 ```env
-VITNERA_CONTRACT=0xE2278a15d5ab720e41805B7d84A794DA911f4b01
-VITE_VITNERA_CONTRACT=0xE2278a15d5ab720e41805B7d84A794DA911f4b01
-VITE_DEPLOYMENT_BLOCK=19850136
+VITNERA_CONTRACT=0xc6a92F7E7BdDB2ca149518aE408006031808F117
+VITE_VITNERA_CONTRACT=0xc6a92F7E7BdDB2ca149518aE408006031808F117
+VITE_DEPLOYMENT_BLOCK=20642802
 ```
 
-Deployment transaction: [`0x0ac89868…b415393`](https://scan.botchain.ai/tx/0x0ac89868e4f1448af465bdb732e2a2d689911f854413d0511de515203b415393).
+Deployment transaction: [`0xeac28b06…9505e41`](https://scan.botchain.ai/tx/0xeac28b06ce0013741df52513e385bc7b9e408ac13233b2eb44de633ff9505e41).
 
 ## 2. Reviewer
 
@@ -51,6 +51,8 @@ VITNERA_CONTRACT=0x...
 ```
 
 The address derived from `REVIEWER_PRIVATE_KEY` must equal `REVIEWER_ADDRESS` authorized during deployment.
+
+The reviewer is not used for marketplace summary generation. Public summaries are produced locally from public labels and evidence-category counts. Protected document text reaches this service only when an issuer explicitly starts the separate evidence review.
 
 ```bash
 docker build -f services/reviewer/Dockerfile -t vitnera-reviewer .
@@ -105,6 +107,7 @@ The SPA rewrite in `vercel.json` keeps client-side routes working after refresh.
 - Use a dedicated BOT Chain RPC with rate limits appropriate for event reads.
 - Restrict reviewer and upload CORS to the production web origin.
 - Keep all non-`VITE_` secrets server-side.
+- Back up each creator recovery kit separately from its passphrase. Neither the web deployment nor the upload API can restore a lost creator identity.
 - Review the configured AI provider's data controls before processing sensitive documents. Do not claim zero retention unless the deployed provider account guarantees it.
 - Fund and monitor the reviewer/deployer operational wallets separately.
 - Verify the contract source in the BOT Chain explorer.

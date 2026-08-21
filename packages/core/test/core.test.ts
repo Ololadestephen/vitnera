@@ -1,24 +1,30 @@
 import { describe, expect, it } from "vitest";
 import {
   createKeyEnvelope,
+  createCreatorRoomKeyEnvelope,
   decryptDocument,
   documentMerkleRoot,
   encryptDocument,
   envelopeHash,
   exportRecoveryBundle,
+  exportCreatorRecoveryIdentity,
   exportRoomKeyRecovery,
   generateInvestorKeyPair,
+  generateCreatorRecoveryIdentity,
   generateRoomKey,
+  generatePrivatePublicSummary,
   importRecoveryBundle,
+  importCreatorRecoveryIdentity,
   importRoomKeyRecovery,
   openKeyEnvelope,
-  type SolarManifest,
+  openCreatorRoomKeyEnvelope,
+  type RwaManifest,
 } from "../src/index.js";
 
 describe("Vitnera cryptography", () => {
   it("encrypts and decrypts room documents with authenticated context", async () => {
     const roomKey = await generateRoomKey();
-    const plaintext = new TextEncoder().encode("private solar lease");
+    const plaintext = new TextEncoder().encode("private asset agreement");
     const encrypted = await encryptDocument({
       plaintext,
       roomKey: roomKey.bytes,
@@ -33,7 +39,7 @@ describe("Vitnera cryptography", () => {
       iv: encrypted.iv,
       associatedData: encrypted.associatedData,
     });
-    expect(new TextDecoder().decode(decrypted)).toBe("private solar lease");
+    expect(new TextDecoder().decode(decrypted)).toBe("private asset agreement");
   });
 
   it("creates a wallet-bound X25519 key envelope", async () => {
@@ -83,18 +89,56 @@ describe("Vitnera cryptography", () => {
     expect(await importRoomKeyRecovery(legacy, "a long issuer recovery passphrase")).toEqual(roomKey.bytes);
   });
 
+  it("restores every room version through one encrypted creator recovery identity", async () => {
+    const creator = generateCreatorRecoveryIdentity();
+    const recovery = await exportCreatorRecoveryIdentity({
+      identity: creator,
+      wallet: "0x3333333333333333333333333333333333333333",
+      passphrase: "one long creator recovery passphrase",
+    });
+    const restored = await importCreatorRecoveryIdentity(recovery, "one long creator recovery passphrase");
+    const roomKey = await generateRoomKey();
+    const envelope = await createCreatorRoomKeyEnvelope({
+      roomKey: roomKey.bytes,
+      recoveryPublicKey: restored.publicKey,
+      assetId: "asset-7",
+      roomVersion: 2,
+      keyCommitment: roomKey.commitment,
+    });
+
+    expect(recovery.format).toBe("vitnera-creator-recovery-v1");
+    expect(await openCreatorRoomKeyEnvelope(envelope, restored.privateKey)).toEqual(roomKey.bytes);
+  });
+
+  it("rejects a creator envelope sealed to another recovery identity", async () => {
+    const roomKey = await generateRoomKey();
+    const creator = generateCreatorRecoveryIdentity();
+    const otherCreator = generateCreatorRecoveryIdentity();
+    const envelope = await createCreatorRoomKeyEnvelope({
+      roomKey: roomKey.bytes,
+      recoveryPublicKey: creator.publicKey,
+      assetId: "asset-8",
+      roomVersion: 1,
+      keyCommitment: roomKey.commitment,
+    });
+
+    await expect(openCreatorRoomKeyEnvelope(envelope, otherCreator.privateKey)).rejects.toThrow(
+      "another creator recovery identity",
+    );
+  });
+
   it("builds a deterministic document Merkle root", async () => {
-    const manifest: SolarManifest = {
-      templateId: "solar-installation-v1",
-      assetId: "solar-lagos-01",
+    const manifest: RwaManifest = {
+      templateId: "rwa-basic-v1",
+      assetId: "equipment-lagos-01",
       roomId: "1",
       version: 1,
       generatedAt: "2026-08-11T00:00:00.000Z",
       documents: [
         {
-          id: "invoice",
-          type: "equipment_invoice",
-          displayName: "Equipment invoice",
+          id: "overview",
+          type: "asset_overview",
+          displayName: "Asset overview",
           mimeType: "application/pdf",
           ciphertextHash: `0x${"11".repeat(32)}`,
           ciphertextUri: "ipfs://invoice",
@@ -106,5 +150,18 @@ describe("Vitnera cryptography", () => {
       ],
     };
     expect(await documentMerkleRoot(manifest)).toBe(await documentMerkleRoot(manifest));
+  });
+
+  it("generates public copy locally without document content", () => {
+    const summary = generatePrivatePublicSummary({
+      title: "Equipment lease room",
+      assetType: "equipment",
+      assetLocation: "West Africa",
+      evidenceTypes: ["asset_overview", "ownership_or_control"],
+      evidenceCount: 2,
+    });
+    expect(summary).toContain("2 encrypted evidence files");
+    expect(summary).toContain("controlled access");
+    expect(summary).not.toContain("GEN-4401");
   });
 });

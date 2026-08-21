@@ -136,6 +136,8 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
     mapping(address => uint256) public verifierNonces;
     mapping(uint256 => VerifierRecord) private _verifierRecords;
     mapping(uint256 => uint256) public latestVerifierAttestationId;
+    mapping(uint256 => uint256) public acknowledgedReviewId;
+    mapping(uint256 => bytes32) public reviewAcknowledgementHash;
     mapping(bytes32 => bool) public supportedTemplates;
     mapping(uint32 => bool) public supportedPolicyVersions;
     mapping(address => uint256) public claimableEarnings;
@@ -181,6 +183,9 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         uint64 expiry
     );
     event DataRoomActivated(uint256 indexed roomId, uint64 indexed version, uint256 indexed reviewId);
+    event ReviewFindingsAcknowledged(
+        uint256 indexed roomId, uint256 indexed reviewId, address indexed issuer, bytes32 acknowledgementHash
+    );
     event DataRoomPaused(uint256 indexed roomId, uint64 indexed version);
     event DataRoomArchived(uint256 indexed roomId, uint64 indexed version);
     event AccessRequested(
@@ -352,6 +357,40 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         external
         returns (uint256 reviewId)
     {
+        reviewId = _recordAIReview(attestation, signature);
+    }
+
+    function recordReviewAndActivate(AIReviewAttestation calldata attestation, bytes calldata signature)
+        external
+        onlyIssuer(attestation.roomId)
+        returns (uint256 reviewId)
+    {
+        reviewId = _recordAIReview(attestation, signature);
+        _activateDataRoom(attestation.roomId);
+    }
+
+    function activateDataRoom(uint256 roomId) external onlyIssuer(roomId) {
+        _activateDataRoom(roomId);
+    }
+
+    function activateDataRoomWithAcknowledgement(uint256 roomId, bytes32 acknowledgementHash)
+        external
+        onlyIssuer(roomId)
+    {
+        if (acknowledgementHash == bytes32(0)) revert InvalidConfiguration();
+        DataRoom storage room = _rooms[roomId];
+        AIReview storage review = _reviews[room.currentReviewId];
+        if (!_isCurrentReviewValid(room, review)) revert InvalidReview();
+        acknowledgedReviewId[roomId] = room.currentReviewId;
+        reviewAcknowledgementHash[roomId] = acknowledgementHash;
+        emit ReviewFindingsAcknowledged(roomId, room.currentReviewId, msg.sender, acknowledgementHash);
+        _activateDataRoom(roomId);
+    }
+
+    function _recordAIReview(AIReviewAttestation calldata attestation, bytes calldata signature)
+        internal
+        returns (uint256 reviewId)
+    {
         DataRoom storage room = _rooms[attestation.roomId];
         if (room.issuer == address(0)) revert InvalidRoom();
         if (
@@ -382,6 +421,8 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
             status: attestation.reviewStatus
         });
         room.currentReviewId = reviewId;
+        acknowledgedReviewId[attestation.roomId] = 0;
+        reviewAcknowledgementHash[attestation.roomId] = bytes32(0);
         room.status = RoomStatus.ReviewRequired;
         room.updatedAt = uint64(block.timestamp);
 
@@ -396,10 +437,11 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         );
     }
 
-    function activateDataRoom(uint256 roomId) external onlyIssuer(roomId) {
+    function _activateDataRoom(uint256 roomId) internal {
         DataRoom storage room = _rooms[roomId];
+        if (room.status == RoomStatus.Archived) revert InvalidStatus();
         AIReview storage review = _reviews[room.currentReviewId];
-        if (!_isCurrentReviewReady(room, review)) revert InvalidReview();
+        if (!_isCurrentReviewAccepted(roomId, room, review)) revert InvalidReview();
         room.status = RoomStatus.Active;
         room.updatedAt = uint64(block.timestamp);
         emit DataRoomActivated(roomId, room.version, room.currentReviewId);
@@ -464,7 +506,9 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         DataRoom storage room = _rooms[roomId];
         if (room.issuer == address(0)) revert InvalidRoom();
         if (room.status != RoomStatus.Active) revert InvalidStatus();
-        if (!_isCurrentReviewReady(room, _reviews[room.currentReviewId])) revert InvalidReview();
+        if (!_isCurrentReviewAccepted(roomId, room, _reviews[room.currentReviewId])) {
+            revert InvalidReview();
+        }
         if (encryptionPublicKey == bytes32(0)) revert InvalidPublicKey();
         if (msg.value != room.accessPrice) revert InvalidPayment();
 
@@ -610,6 +654,12 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         return _isCurrentReviewReady(room, _reviews[room.currentReviewId]);
     }
 
+    function isRoomReviewAccepted(uint256 roomId) external view returns (bool) {
+        DataRoom storage room = _rooms[roomId];
+        if (room.issuer == address(0)) return false;
+        return _isCurrentReviewAccepted(roomId, room, _reviews[room.currentReviewId]);
+    }
+
     function accountedBalance() external view returns (uint256) {
         return totalPendingEscrow + totalClaimableEarnings + totalClaimableRefunds;
     }
@@ -653,7 +703,25 @@ contract VitneraRWA is EIP712, Ownable2Step, ReentrancyGuard {
         view
         returns (bool)
     {
-        return room.currentReviewId != 0 && review.status == ReviewStatus.ReviewReady
+        return review.status == ReviewStatus.ReviewReady && _isCurrentReviewValid(room, review);
+    }
+
+    function _isCurrentReviewAccepted(uint256 roomId, DataRoom storage room, AIReview storage review)
+        internal
+        view
+        returns (bool)
+    {
+        return _isCurrentReviewValid(room, review)
+            && (review.status == ReviewStatus.ReviewReady
+                || acknowledgedReviewId[roomId] == room.currentReviewId);
+    }
+
+    function _isCurrentReviewValid(DataRoom storage room, AIReview storage review)
+        internal
+        view
+        returns (bool)
+    {
+        return room.currentReviewId != 0 && review.status != ReviewStatus.None
             && review.documentRoot == room.documentRoot && review.roomVersion == room.version
             && review.templateId == room.templateId && review.expiry > block.timestamp
             && supportedTemplates[review.templateId] && supportedPolicyVersions[review.policyVersion];

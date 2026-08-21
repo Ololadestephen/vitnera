@@ -4,10 +4,10 @@ import { NavLink, useLocation } from "react-router-dom";
 import { WalletButton } from "./WalletButton";
 
 const nav = [
-  ["Data rooms", "/rooms"],
+  ["Explore", "/rooms"],
   ["My access", "/access"],
-  ["Issuer studio", "/studio"],
-  ["Evidence", "/evidence"],
+  ["Workspace", "/studio"],
+  ["Technical proof", "/evidence"],
 ] as const;
 
 export function Layout({ children }: PropsWithChildren) {
