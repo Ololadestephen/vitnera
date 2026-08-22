@@ -2,7 +2,7 @@ import { Search, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { formatEther, zeroAddress } from "viem";
-import { Busy, Status } from "../components/Status";
+import { Busy, Notice, Status } from "../components/Status";
 import { useRooms } from "../hooks/useRooms";
 import { roomStatuses } from "../lib/contract";
 
@@ -33,7 +33,7 @@ export function DirectoryPage() {
         </div>
       </div>
       {rooms.isLoading && <div className="empty-state"><Busy label="Reading BOT Chain" /></div>}
-      {rooms.error && <div className="notice error">{rooms.error.message}</div>}
+      {rooms.error && <Notice error={rooms.error} />}
       {!rooms.isLoading && visible.length === 0 && <div className="empty-state">No data rooms match this view.</div>}
       <div className="room-grid">
         {visible.map((room) => (

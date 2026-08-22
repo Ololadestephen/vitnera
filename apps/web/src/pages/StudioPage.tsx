@@ -475,7 +475,7 @@ export function StudioPage() {
   return (
     <div className="page page-enter studio-page">
       <div className="page-heading split-heading"><div><p className="eyebrow">Issuer workspace</p><h1>Publish a private asset room</h1><p>Add evidence, create the encrypted room, then review and publish.</p></div><div className="earnings-card"><CircleDollarSign /><span>Claimable</span><strong>{formatEther(earnings.data ?? 0n)} BOT</strong><button disabled={!earnings.data || tx.pending} onClick={() => void runAction(withdraw)}>Withdraw</button></div></div>
-      <Notice error={actionError ?? tx.error} message={progress ?? message} />
+      <Notice error={actionError ?? tx.error} message={progress ? undefined : message} progress={progress} />
       {tx.hash && <a className="text-link" href={explorerTx(tx.hash)} target="_blank" rel="noreferrer">View latest transaction</a>}
       <section className="panel room-manager">
         <div className="section-title"><Archive /><div><p className="eyebrow">Your rooms</p><h2>Manage asset rooms</h2></div></div>

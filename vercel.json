@@ -1,5 +1,8 @@
 {
   "buildCommand": "npm run build -w @vitnera/web",
   "outputDirectory": "apps/web/dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/storage-api/:path*", "destination": "https://aegiskey-hfjd.vercel.app/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
