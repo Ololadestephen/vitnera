@@ -7,6 +7,7 @@ import {
   bytesToHex,
   concatBytes,
   decodeUtf8,
+  hexToBytes,
   utf8,
 } from "./encoding.js";
 import { sha256Bytes, sha256Hex } from "./hash.js";
@@ -153,6 +154,22 @@ export async function decryptDocument(input: {
 
 export function generateInvestorKeyPair(): InvestorKeyPair {
   const privateKey = x25519.utils.randomPrivateKey();
+  return { privateKey, publicKey: x25519.getPublicKey(privateKey) };
+}
+
+/// Stable, wallet-scoped seed message: signing it always reproduces the same
+/// investor identity key on any device, making the wallet signature itself
+/// the recoverable backup.
+export function investorIdentityMessage(wallet: string): string {
+  return ["Vitnera investor access identity", "v1", `wallet:${wallet.toLowerCase()}`].join("\n");
+}
+
+export async function deriveInvestorKeyPairFromSignature(
+  signatureHex: string,
+): Promise<InvestorKeyPair> {
+  const bytes = hexToBytes(signatureHex);
+  if (bytes.length !== 65) throw new Error("Investor identity derivation needs a 65-byte personal signature");
+  const privateKey = await sha256Bytes(bytes);
   return { privateKey, publicKey: x25519.getPublicKey(privateKey) };
 }
 

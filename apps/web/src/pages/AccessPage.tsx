@@ -1,13 +1,13 @@
 import {
   decryptDocument,
+  deriveInvestorKeyPairFromSignature,
   envelopeHash,
-  importRecoveryBundle,
+  investorIdentityMessage,
   openKeyEnvelope,
   type KeyEnvelope,
-  type RecoveryExport,
 } from "@vitnera/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileKey, KeyRound, RotateCcw } from "lucide-react";
+import { Download, FileKey, PenLine, RotateCcw } from "lucide-react";
 import { useState } from "react";
 import { formatEther } from "viem";
 import { useAccount } from "wagmi";
@@ -26,7 +26,6 @@ export function AccessPage() {
   const tx = useTransaction();
   const rooms = useRooms();
   const queryClient = useQueryClient();
-  const [passphrases, setPassphrases] = useState<Record<string, string>>({});
   const [messages, setMessages] = useState<Record<string, string>>({});
   const requests = useQuery({
     queryKey: ["investor-requests", address], enabled: Boolean(tx.client && address),
@@ -37,21 +36,25 @@ export function AccessPage() {
     queryFn: () => tx.client!.readContract({ address: requireContract(), abi: vitneraAbi, functionName: "claimableRefunds", args: [address!] }),
   });
 
-  async function importRecovery(requestId: string, roomId: string, version: number, file: File) {
-    if (!address) throw new Error("Connect the investor wallet first");
-    const bundle = JSON.parse(await file.text()) as RecoveryExport;
-    if (bundle.wallet.toLowerCase() !== address.toLowerCase()) throw new Error("This recovery file belongs to another wallet");
-    const pair = await importRecoveryBundle(bundle, passphrases[requestId] ?? "");
+  async function restoreKey(requestId: string, roomId: string, version: number) {
+    if (!tx.wallet || !address) throw new Error("Connect the investor wallet first");
+    setMessages((current) => ({ ...current, [requestId]: "Restoring your access identity..." }));
+    const signature = await tx.wallet.signMessage({ account: address, message: investorIdentityMessage(address) });
+    const pair = await deriveInvestorKeyPairFromSignature(signature);
     saveInvestorKey(address, roomId, version, pair);
-    setMessages((current) => ({ ...current, [requestId]: "Recovery key loaded for this browser session." }));
+    setMessages((current) => ({ ...current, [requestId]: "Access identity restored for this browser session." }));
   }
 
   async function decryptAll(requestId: string) {
     if (!address) throw new Error("Connect the investor wallet first");
     const request = requests.data?.find((item) => item.id.toString() === requestId);
     if (!request || request.status !== 2) throw new Error("This access grant is not active");
-    const pair = loadInvestorKey(address, request.roomId.toString(), Number(request.roomVersion));
-    if (!pair) throw new Error("Import the encrypted investor recovery file first");
+    let pair = loadInvestorKey(address, request.roomId.toString(), Number(request.roomVersion));
+    if (!pair) {
+      await restoreKey(requestId, request.roomId.toString(), Number(request.roomVersion));
+      pair = loadInvestorKey(address, request.roomId.toString(), Number(request.roomVersion));
+    }
+    if (!pair) throw new Error("Restore your access identity before decrypting");
     const envelope = await fetchJson<KeyEnvelope>(request.envelopeUri);
     if ((await envelopeHash(envelope)).toLowerCase() !== request.envelopeHash.toLowerCase()) throw new Error("The key envelope failed its on-chain integrity check");
     if (envelope.investor.toLowerCase() !== address.toLowerCase()) throw new Error("The key envelope belongs to another wallet");
@@ -80,7 +83,7 @@ export function AccessPage() {
   if (!address) return <div className="page empty-state"><h1>My access</h1><p>Connect the wallet that requested access.</p></div>;
   return (
     <div className="page page-enter">
-      <div className="page-heading split-heading"><div><p className="eyebrow">Investor vault</p><h1>My access</h1><p>Manage escrow, recovery keys, and approved document versions.</p></div><div className="earnings-card"><RotateCcw /><span>Refund balance</span><strong>{formatEther(refunds.data ?? 0n)} BOT</strong><button disabled={!refunds.data || tx.pending} onClick={() => void withdrawRefund().catch(() => undefined)}>Withdraw refund</button></div></div>
+      <div className="page-heading split-heading"><div><p className="eyebrow">Investor vault</p><h1>My access</h1><p>Manage escrow and your approved document versions.</p></div><div className="earnings-card"><RotateCcw /><span>Refund balance</span><strong>{formatEther(refunds.data ?? 0n)} BOT</strong><button disabled={!refunds.data || tx.pending} onClick={() => void withdrawRefund().catch(() => undefined)}>Withdraw refund</button></div></div>
       <Notice error={tx.error} />
       {tx.hash && <a className="text-link" href={explorerTx(tx.hash)} target="_blank" rel="noreferrer">View latest transaction</a>}
       {requests.isLoading && <div className="empty-state"><Busy label="Reading access grants" /></div>}
@@ -95,7 +98,7 @@ export function AccessPage() {
             <h2>{room?.metadata?.title ?? `Data room ${request.roomId}`}</h2>
             <div className="key-values"><span>Version<strong>v{request.roomVersion.toString()}</strong></span><span>Escrow<strong>{formatEther(request.amount)} BOT</strong></span><span>Key<strong>{hasKey ? "Loaded" : "Required"}</strong></span></div>
             {request.status === 2 && <>
-              {!hasKey && <div className="recovery-import"><label className="field"><span>Recovery passphrase</span><input type="password" value={passphrases[request.id.toString()] ?? ""} onChange={(event) => setPassphrases((current) => ({ ...current, [request.id.toString()]: event.target.value }))} /></label><label className="button secondary wide file-button"><KeyRound size={17} /> Import recovery file<input type="file" accept="application/json" onChange={(event) => { const file = event.target.files?.[0]; if (file) void importRecovery(request.id.toString(), request.roomId.toString(), Number(request.roomVersion), file).catch((error) => setMessages((current) => ({ ...current, [request.id.toString()]: error.message }))); }} /></label></div>}
+              {!hasKey && <button className="button secondary wide" onClick={() => void restoreKey(request.id.toString(), request.roomId.toString(), Number(request.roomVersion)).catch((error) => setMessages((current) => ({ ...current, [request.id.toString()]: error.message })))}><PenLine size={17} /> Restore access identity</button>}
               <button className="button primary wide" disabled={tx.pending} onClick={() => void decryptAll(request.id.toString()).catch((error) => setMessages((current) => ({ ...current, [request.id.toString()]: error.message })))}><Download size={17} /> Decrypt and download evidence</button>
             </>}
             {request.status === 1 && expired && <button className="button secondary wide" onClick={() => void refund(request.id).catch(() => undefined)}>Reclaim expired escrow</button>}

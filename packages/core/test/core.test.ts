@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   createKeyEnvelope,
+  deriveInvestorKeyPairFromSignature,
   createCreatorRoomKeyEnvelope,
   decryptDocument,
   documentMerkleRoot,
@@ -40,6 +41,28 @@ describe("Vitnera cryptography", () => {
       associatedData: encrypted.associatedData,
     });
     expect(new TextDecoder().decode(decrypted)).toBe("private asset agreement");
+  });
+
+  it("derives the same investor identity from the same wallet signature", async () => {
+    const signature = "0x" + "ab".repeat(64) + "01";
+    const first = await deriveInvestorKeyPairFromSignature(signature);
+    const second = await deriveInvestorKeyPairFromSignature(signature);
+    expect(first.privateKey).toEqual(second.privateKey);
+    expect(first.publicKey).toEqual(second.publicKey);
+
+    const other = await deriveInvestorKeyPairFromSignature("0x" + "cd".repeat(64) + "01");
+    expect(other.privateKey).not.toEqual(first.privateKey);
+
+    // A derived identity works through the full envelope round-trip.
+    const roomKey = await generateRoomKey();
+    const envelope = await createKeyEnvelope({
+      roomKey: roomKey.bytes,
+      recipientPublicKey: first.publicKey,
+      roomId: "9",
+      roomVersion: 1,
+      investor: "0x1111111111111111111111111111111111111111",
+    });
+    expect(await openKeyEnvelope(envelope, first.privateKey)).toEqual(roomKey.bytes);
   });
 
   it("creates a wallet-bound X25519 key envelope", async () => {

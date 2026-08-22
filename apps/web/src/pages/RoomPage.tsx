@@ -1,6 +1,6 @@
-import { bytesToHex, exportRecoveryBundle, generateInvestorKeyPair } from "@vitnera/core";
+import { bytesToHex, deriveInvestorKeyPairFromSignature, investorIdentityMessage } from "@vitnera/core";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock, Download, ExternalLink, FileLock2, ShieldCheck } from "lucide-react";
+import { Clock, Download, ExternalLink, FileLock2, PenLine, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { formatEther, zeroAddress } from "viem";
@@ -11,7 +11,7 @@ import { useTransaction } from "../hooks/useTransaction";
 import { vitneraAbi, requestStatuses, reviewStatuses, roomStatuses } from "../lib/contract";
 import { explorerAddress, isInvestorVerified, resolveRegulatedAsset } from "../lib/erc3643";
 import { explorerTx, requireContract } from "../lib/config";
-import { downloadJson, saveInvestorKey } from "../lib/session";
+import { saveInvestorKey } from "../lib/session";
 
 export function RoomPage() {
   const { roomId = "0" } = useParams();
@@ -20,8 +20,8 @@ export function RoomPage() {
   const rooms = useRooms();
   const tx = useTransaction();
   const queryClient = useQueryClient();
-  const [passphrase, setPassphrase] = useState("");
   const [message, setMessage] = useState<string>();
+  const [progress, setProgress] = useState<string>();
   const room = useMemo(() => rooms.data?.find((item) => item.id === id), [rooms.data, id]);
 
   const review = useQuery({
@@ -62,12 +62,12 @@ export function RoomPage() {
 
   async function requestAccess() {
     if (!room || !address || !tx.wallet) throw new Error("Connect a BOT Chain wallet first");
-    if (passphrase.length < 12) throw new Error("Set a recovery passphrase with at least 12 characters");
     setMessage(undefined);
-    const pair = generateInvestorKeyPair();
-    const recovery = await exportRecoveryBundle({ keyPair: pair, wallet: address, passphrase });
-    downloadJson(recovery, `vitnera-room-${roomId}-investor-recovery.json`);
+    setProgress("Creating your access identity...");
+    const signature = await tx.wallet.signMessage({ account: address, message: investorIdentityMessage(address) });
+    const pair = await deriveInvestorKeyPairFromSignature(signature);
     saveInvestorKey(address, roomId, Number(room.version), pair);
+    setProgress(undefined);
     await tx.send(() => tx.wallet!.writeContract({
       address: requireContract(), abi: vitneraAbi, functionName: "requestAccess",
       args: [id, bytesToHex(pair.publicKey)], value: room.accessPrice,
@@ -119,8 +119,8 @@ export function RoomPage() {
                 </>}
               </div>
             </div>}
-            <label className="field"><span>Recovery passphrase</span><input type="password" value={passphrase} onChange={(event) => setPassphrase(event.target.value)} placeholder="12+ characters" /><small>An encrypted recovery file downloads before payment.</small></label>
-            <button className="button primary wide" disabled={tx.pending || !address || verified.data === false} onClick={() => void requestAccess().catch(() => undefined)}>{tx.pending ? <Busy label="Submitting escrow" /> : `Request access · ${formatEther(room.accessPrice)} BOT`}</button>
+            <p className="privacy-note"><PenLine size={16} /> One signature creates your private access identity. The derived key never leaves this device, and the same signature restores it on any device.</p>
+            <button className="button primary wide" disabled={tx.pending || !address || verified.data === false} onClick={() => void requestAccess().catch(() => { setProgress(undefined); })}>{tx.pending ? <Busy label={progress ?? "Submitting escrow"} /> : `Sign and request access · ${formatEther(room.accessPrice)} BOT`}</button>
             {verified.data === false && <div className="notice">This room requires ERC-3643 verification and your wallet is not verified by the linked asset's Identity Registry. The contract would reject the deposit. Contact the asset issuer to become eligible.</div>}
           </>}
           {currentRequest?.status === 2 && <><a className="button primary wide" href="/access"><Download size={17} /> Open My Access</a><p className="privacy-note"><ShieldCheck size={17} /> Private evidence summaries are available only after approved access.</p></>}
